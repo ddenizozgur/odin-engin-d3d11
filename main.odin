@@ -8,7 +8,7 @@ import "core:time"
 import "r"
 import "wm"
 
-font: r.Font
+varela: r.Font
 
 to_init :: proc() -> bool {
 	r.d3d11_load()
@@ -19,11 +19,11 @@ to_init :: proc() -> bool {
 		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
 		json_path, png_path := r.msdf_atlas_gen(
-			"rsrc/ttf/VarelaRound-Regular.ttf",
+			"rsrc/font/VarelaRound-Regular.ttf",
 			allocator = context.temp_allocator,
 		) or_return
 
-		font = r.msdf_load_from_file(json_path, png_path) or_return
+		varela = r.msdf_load_from_file(json_path, png_path) or_return
 	}
 
 	return true
@@ -44,11 +44,11 @@ to_r :: proc(dt: f32) {
 		some_bg(et)
 		// liq_neon(et)
 
-		draw_some_text(font, 0, 1)
+		draw_some_text(varela, 0, 1)
 
 		// r.imm_push_rect_grad(mouse_pos, {120, 120}, r.BLUE, r.BLUE, r.YELLOW, r.YELLOW)
 
-		draw_fps(font, {client_size.x, 0}, 20, dt, .TopRight)
+		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
 	}
 }
 
@@ -127,15 +127,12 @@ draw_some_text :: proc(font: r.Font, pos: [2]f32, scale: f32) {
 		{
 			// runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
-			r.imm_push_text_grad(
+			r.imm_push_text(
 				font,
 				"The quick brown fox jumps over the lazy dog",
 				// fmt.tprintf("The quick brown fox jumps over the lazy dog, %v", font_size),
 				{pos.x, y},
 				font_size,
-				r.WHITE,
-				r.BEIGE,
-				r.WHITE,
 				r.WHITE,
 			)
 		}

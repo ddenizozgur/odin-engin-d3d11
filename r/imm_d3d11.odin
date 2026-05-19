@@ -335,9 +335,9 @@ float4 ps_main(vs_out input) : SV_TARGET {
   out_color.a *= alpha;
 
   // May broke video compression algos
-  // float noise = gradient_noise(input.sv_pos.xy);
-  // noise = (noise - 0.5) / 255.0;
-  // out_color.rgb += noise;
+  float noise = gradient_noise(input.sv_pos.xy);
+  noise = (noise - 0.5) / 255.0;
+  out_color.rgb += noise;
 
 	return out_color;
 }`
