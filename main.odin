@@ -10,23 +10,26 @@ import "wm"
 
 font: r.Font
 
-to_r :: proc(dt: f32) -> bool {
-	@(static) initted := false
-	if (!initted) {
-		defer initted = true
+to_init :: proc() -> bool {
+	r.d3d11_load()
+	r.d3d11_set_sync_interval(0)
+	r.imm_d3d11_load()
 
-		{
-			runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	{
+		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
-			json_path, png_path := r.msdf_atlas_gen(
-				"rsrc/ttf/VarelaRound-Regular.ttf",
-				allocator = context.temp_allocator,
-			) or_return
+		json_path, png_path := r.msdf_atlas_gen(
+			"rsrc/ttf/VarelaRound-Regular.ttf",
+			allocator = context.temp_allocator,
+		) or_return
 
-			font = r.msdf_load_from_file(json_path, png_path) or_return
-		}
+		font = r.msdf_load_from_file(json_path, png_path) or_return
 	}
 
+	return true
+}
+
+to_r :: proc(dt: f32) {
 	@(static) et: f32
 	defer et += dt
 
@@ -48,8 +51,6 @@ to_r :: proc(dt: f32) -> bool {
 
 		draw_fps(font, {client_size.x, 0}, 20, dt, .TopRight)
 	}
-
-	return true
 }
 
 main :: proc() {
@@ -58,9 +59,7 @@ main :: proc() {
 	_ = wm.window_init("Kralsın", {1280, 800}, .Windowed)
 	defer wm.window_free()
 
-	r.d3d11_load()
-	r.d3d11_set_sync_interval(0)
-	r.imm_d3d11_load()
+	_ = to_init()
 
 	prev_time := time.now()
 	frame_loop: for {
