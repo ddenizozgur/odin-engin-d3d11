@@ -36,14 +36,13 @@ to_r :: proc(dt: f32) {
 	client_size := cast([2]f32)wm.get_client_size()
 	mouse_pos := cast([2]f32)wm.get_mouse_pos()
 
-	r.d3d11_clear_default_rtv({0.1, 0.2, 0.3, 1})
+	r.d3d11_clear_default_rtv(r.NAYSAYER_BG)
 	defer r.d3d11_present()
 	{
 		r.IMM_FRAME_SCOPED()
 
 		some_bg(et)
-
-		liq_neon(et)
+		// liq_neon(et)
 
 		draw_some_text(font, 0, 1)
 

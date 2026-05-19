@@ -40,8 +40,8 @@ d3d11_present :: proc() {
 	_d3d11_per_window.swapchain1->Present(_d3d11_per_window.sync_interval, {})
 }
 
-d3d11_clear_default_rtv :: proc(color: [4]f32) {
-	tmp := color // ??
+d3d11_clear_default_rtv :: proc(color: RGBA8) {
+	tmp := rgba8_to_vec4f32(color)
 	_d3d11_persist.device_ctx->ClearRenderTargetView(_d3d11_per_window.default_rtv, &tmp)
 }
 
@@ -155,7 +155,6 @@ d3d11_load :: proc() -> bool {
 		_d3d11_persist.device->CreateRenderTargetView(rt, nil, &_d3d11_per_window.default_rtv)
 		rt->Release()
 	}
-
 
 	return true
 }
