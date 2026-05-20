@@ -6,26 +6,6 @@ import "core:fmt"
 import "core:sys/windows"
 
 //
-// General
-//
-set_console_utf8 :: proc() {
-	windows.SetConsoleOutputCP(.UTF8)
-	windows.SetConsoleCP(.UTF8)
-}
-
-graphical_error :: proc(title, msg: string) {
-	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-
-	title16 := windows.utf8_to_wstring(title, context.temp_allocator)
-	msg16 := windows.utf8_to_wstring(msg, context.temp_allocator)
-
-	windows.MessageBoxW(nil, msg16, title16, windows.MB_OK | windows.MB_ICONERROR)
-}
-
-caret_blink_time :: proc() -> f32 {return cast(f32)GetCaretBlinkTime() / 1000.}
-double_click_time :: proc() -> f32 {return cast(f32)GetDoubleClickTime() / 1000.}
-
-//
 // Window
 //
 get_hwnd :: proc() -> windows.HWND {return _hwnd}
@@ -221,21 +201,7 @@ window_free :: proc() {
 @(private = "file")
 _WNDCLASS_NAME :: "WndClassName"
 
-@(private)
+@(private = "file")
 _hwnd: windows.HWND
 // @(private)
 // _hdc: windows.HDC
-
-@(private)
-_display_settings: windows.DEVMODEW
-@(private = "file", init)
-_display_settings_init :: proc "contextless" () {
-	windows.EnumDisplaySettingsW(nil, windows.ENUM_CURRENT_SETTINGS, &_display_settings)
-}
-
-foreign import user32 "system:User32.lib"
-@(private = "file", default_calling_convention = "system")
-foreign user32 {
-	GetCaretBlinkTime :: proc() -> windows.UINT ---
-	GetDoubleClickTime :: proc() -> windows.UINT ---
-}

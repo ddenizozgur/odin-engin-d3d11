@@ -188,9 +188,9 @@ imm_push_text_grad :: proc(
 
 		src := [4]f32 {
 			glyph.atlasBounds.left / atlas_w,
-			1.0 - (glyph.atlasBounds.top / atlas_h),
+			1 - (glyph.atlasBounds.top / atlas_h),
 			glyph.atlasBounds.right / atlas_w,
-			1.0 - (glyph.atlasBounds.bottom / atlas_h),
+			1 - (glyph.atlasBounds.bottom / atlas_h),
 		}
 
 		append(
@@ -213,7 +213,9 @@ imm_push_text :: proc(font: Font, text: string, pos: [2]f32, font_size: f32, col
 	imm_push_text_grad(font, text, pos, font_size, color, color, color, color)
 }
 text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
-	if text == "" do return {0, 0}
+	if text == "" {
+		return {0, 0}
+	}
 
 	cursor_x := f32(0)
 	max_x := f32(0)

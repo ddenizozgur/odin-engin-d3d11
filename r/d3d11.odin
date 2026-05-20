@@ -24,7 +24,6 @@ d3d11_set_sync_interval :: #force_inline proc(si: u32) {
 	_d3d11_per_window.sync_interval = si
 }
 
-// Prevents input latency
 d3d11_swapchain_wait :: proc() {
 	// Otherwise window will be stuck when minimized
 	if !wm.window_is_minimized() {
@@ -181,7 +180,7 @@ _d3d11_per_window: struct {
 	sync_interval:         u32,
 }
 
-@(private)
+@(private = "file")
 _d3d11_base_device_and_ctx :: proc(
 ) -> (
 	device: ^d3d11.IDevice,
@@ -232,7 +231,7 @@ _d3d11_base_device_and_ctx :: proc(
 	return device, ctx, true
 }
 
-@(private) // TODO: Error enum
+@(private = "file") // TODO: Error enum
 _d3d11_load_persist :: proc() -> bool {
 	{
 		base_device, base_device_ctx := _d3d11_base_device_and_ctx() or_return

@@ -4,7 +4,6 @@ package r
 import "base:runtime"
 import "core:fmt"
 import "core:image"
-import "core:os"
 import "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"

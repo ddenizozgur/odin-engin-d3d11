@@ -42,11 +42,11 @@ to_r :: proc(dt: f32) {
 		r.IMM_FRAME_SCOPED()
 
 		some_bg(et)
-		// liq_neon(et)
+		liq_neon(et)
 
 		draw_some_text(varela, 0, 1)
 
-		// r.imm_push_rect_grad(mouse_pos, {120, 120}, r.BLUE, r.BLUE, r.YELLOW, r.YELLOW)
+		// r.imm_push_rect(mouse_pos, {120, 120}, {0xff, 0xff, 0xff, 0x55})
 
 		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
 	}
@@ -147,19 +147,12 @@ some_bg :: proc(et: f32) {
 	s3 := math.sin_f32(et * 0.18 + 1.0)
 	s4 := math.cos_f32(et * 0.12 + 2.0)
 
-	tl := [4]f32{0.10 + 0.05 * s1, 0.02, 0.25 + 0.1 * s2, 1.0}
-	tr := [4]f32{0.30 + 0.10 * s3, 0.05, 0.15, 1.0}
-	bl := [4]f32{0.02, 0.15 + 0.05 * s4, 0.35 + 0.1 * s1, 1.0}
-	br := [4]f32{0.15, 0.05, 0.25 + 0.05 * s2, 1.0}
+	tl := r.vec4f32_to_rgba8({0.10 + 0.05 * s1, 0.02, 0.25 + 0.1 * s2, 1.0})
+	tr := r.vec4f32_to_rgba8({0.30 + 0.10 * s3, 0.05, 0.15, 1.0})
+	bl := r.vec4f32_to_rgba8({0.02, 0.15 + 0.05 * s4, 0.35 + 0.1 * s1, 1.0})
+	br := r.vec4f32_to_rgba8({0.15, 0.05, 0.25 + 0.05 * s2, 1.0})
 
-	r.imm_push_rect_grad(
-		{0, 0},
-		client_size,
-		r.vec4f32_to_rgba8(tl),
-		r.vec4f32_to_rgba8(tr),
-		r.vec4f32_to_rgba8(bl),
-		r.vec4f32_to_rgba8(br),
-	)
+	r.imm_push_rect_grad({0, 0}, client_size, tl, tr, bl, br)
 }
 
 liq_neon :: proc(et: f32) {
