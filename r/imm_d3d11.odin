@@ -177,7 +177,7 @@ _imm_d3d11_flush :: proc() {
 	}
 }
 
-@(private = "file") // Align with GPU register
+@(private = "file")
 _Imm_D3D11_Uniforms :: struct #align (16) {
 	proj_matrix: matrix[4, 4]f32,
 }

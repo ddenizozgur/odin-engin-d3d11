@@ -42,7 +42,7 @@ to_r :: proc(dt: f32) {
 		r.IMM_FRAME_SCOPED()
 
 		some_bg(et)
-		liq_neon(et)
+		// liq_neon(et)
 
 		draw_some_text(varela, 0, 1)
 

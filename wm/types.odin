@@ -8,7 +8,7 @@ Event_Key :: struct {
 	mod:          Key_Modifiers,
 	state:        Key_State,
 	is_repeat:    bool,
-	repeat_count: int,
+	// repeat_count: int,
 }
 Event_Text :: distinct rune
 

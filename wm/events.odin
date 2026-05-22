@@ -174,7 +174,7 @@ _window_proc :: proc "system" (
 				mod = keymod,
 				state = is_down ? .Pressed : .Released,
 				is_repeat = is_repeat,
-				repeat_count = is_repeat ? lparam & 0xffff : 0,
+				// repeat_count = is_repeat ? lparam & 0xffff : 0,
 			},
 		)
 

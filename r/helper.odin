@@ -70,10 +70,10 @@ Align_Kind :: enum {
 	BottomRight,
 }
 
-pos_from_align_kind :: proc(pos, size: [2]f32, align: Align_Kind) -> [2]f32 {
+pos_from_align_kind :: proc(pos, size: [2]f32, kind: Align_Kind) -> [2]f32 {
 	real_pos := pos
 
-	switch align {
+	switch kind {
 	case .TopLeft:
 	case .TopCenter:
 		real_pos.x -= size.x * 0.5
