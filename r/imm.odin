@@ -4,14 +4,11 @@ package r
 import "core:mem"
 
 Batch_Per_Data :: struct {
-	dst:      [4]f32,
-	src:      [4]f32,
-	color_tl: RGBA8,
-	color_tr: RGBA8,
-	color_bl: RGBA8,
-	color_br: RGBA8,
-	cradii:   f32,
-	kind:     enum u32 {
+	dst_rect:   [4]f32, // LT, LR, BL, BR
+	src_rect:   [4]f32,
+	color_rect: [4]RGBA8,
+	cradii:     f32,
+	kind:       enum u32 {
 		Rect,
 		Tex2D,
 		MSDF,
@@ -32,9 +29,9 @@ IMM_FRAME_SCOPED :: #force_inline proc() {
 	imm_begin_frame()
 }
 
-imm_push_rect_grad :: proc(
+imm_push_rect :: proc(
 	pos, size: [2]f32,
-	color_tl, color_tr, color_bl, color_br: RGBA8,
+	color_rect: [4]RGBA8, // LT, LR, BL, BR
 	cradii := f32(0),
 ) {
 	if len(_batch_list) + 1 > cap(_batch_list) {
@@ -47,37 +44,28 @@ imm_push_rect_grad :: proc(
 	append(
 		&_batch_list,
 		Batch_Per_Data {
-			dst = {tl.x, tl.y, br.x, br.y},
-			color_tl = color_tl,
-			color_tr = color_tr,
-			color_bl = color_bl,
-			color_br = color_br,
+			dst_rect = {tl.x, tl.y, br.x, br.y},
+			color_rect = color_rect,
 			cradii = cradii,
 			kind = .Rect,
 		},
 	)
 }
-imm_push_rect :: #force_inline proc(pos, size: [2]f32, color: RGBA8, cradii := f32(0)) {
-	imm_push_rect_grad(pos, size, color, color, color, color, cradii)
-}
 
-imm_push_circle_grad :: proc(
+imm_push_circle :: proc(
 	center: [2]f32,
 	radius: f32,
-	color_tl, color_tr, color_bl, color_br: RGBA8,
+	color_rect: [4]RGBA8, // LT, LR, BL, BR
 ) {
 	real_pos := pos_from_align_kind(center, radius * 2, .Center)
-	imm_push_rect_grad(real_pos, radius * 2, color_tl, color_tr, color_bl, color_br, radius)
-}
-imm_push_circle :: proc(center: [2]f32, radius: f32, color: RGBA8) {
-	imm_push_circle_grad(center, radius, color, color, color, color)
+	imm_push_rect(real_pos, radius * 2, color_rect, radius)
 }
 
-imm_push_tex2d_ex_grad :: proc(
+imm_push_tex2d_ex :: proc(
 	tex2d: D3D11_Tex2D,
 	src_pos, src_size: [2]f32,
 	dst_pos, dst_size: [2]f32,
-	tint_tl, tint_tr, tint_bl, tint_br: RGBA8,
+	tint_rect := cast([4]RGBA8)WHITE, // LT, LR, BL, BR
 	cradii := f32(0),
 ) {
 	if len(_batch_list) + 1 > cap(_batch_list) {
@@ -92,7 +80,7 @@ imm_push_tex2d_ex_grad :: proc(
 	tw := cast(f32)tex2d.size.x
 	th := cast(f32)tex2d.size.y
 
-	src := [4]f32 {
+	src_rect := [4]f32 {
 		src_pos.x / tw,
 		src_pos.y / th,
 		(src_pos.x + src_size.x) / tw,
@@ -102,49 +90,33 @@ imm_push_tex2d_ex_grad :: proc(
 	append(
 		&_batch_list,
 		Batch_Per_Data {
-			src = src,
-			dst = {dst_tl.x, dst_tl.y, dst_br.x, dst_br.y},
-			color_tl = tint_tl,
-			color_tr = tint_tr,
-			color_bl = tint_bl,
-			color_br = tint_br,
+			src_rect = src_rect,
+			dst_rect = {dst_tl.x, dst_tl.y, dst_br.x, dst_br.y},
+			color_rect = tint_rect,
 			cradii = cradii,
 			kind = .Tex2D,
 		},
 	)
 }
-imm_push_tex2d_ex :: proc(
+imm_push_tex2d :: proc(
 	tex2d: D3D11_Tex2D,
-	src_pos, src_size: [2]f32,
-	dst_pos, dst_size: [2]f32,
-	tint := WHITE,
+	pos, size: [2]f32,
+	tint_rect := cast([4]RGBA8)WHITE, // LT, LR, BL, BR
 	cradii := f32(0),
 ) {
-	imm_push_tex2d_ex_grad(
-		tex2d,
-		src_pos,
-		src_size,
-		dst_pos,
-		dst_size,
-		tint,
-		tint,
-		tint,
-		tint,
-		cradii,
-	)
-}
-imm_push_tex2d :: proc(tex2d: D3D11_Tex2D, pos, size: [2]f32, tint := WHITE, cradii := f32(0)) {
-	imm_push_tex2d_ex(tex2d, {0, 0}, cast([2]f32)tex2d.size, pos, size, tint, cradii)
+	imm_push_tex2d_ex(tex2d, 0, cast([2]f32)tex2d.size, pos, size, tint_rect, cradii)
 }
 
-imm_push_text_grad :: proc(
+imm_push_text :: proc(
 	font: Font,
 	text: string,
 	pos: [2]f32,
 	font_size: f32,
-	color_tl, color_tr, color_bl, color_br: RGBA8,
+	color_rect: [4]RGBA8,
 ) {
-	if text == "" do return
+	if text == "" {
+		return
+	}
 
 	imm_d3d11_bind_tex2d(font.atlas.srv)
 
@@ -168,8 +140,10 @@ imm_push_text_grad :: proc(
 			continue
 		}
 
-		glyph, ok := font.glyphs[char]
-		if !ok do glyph = font.glyphs['?']
+		glyph, good := font.glyphs[char]
+		if !good {
+			glyph = font.glyphs['?']
+		}
 
 		// if glyph.atlasBounds.left == glyph.atlasBounds.right {
 		// cursor_x += glyph.advance * font_scale
@@ -179,14 +153,14 @@ imm_push_text_grad :: proc(
 		gx := cursor_x
 		gy := cursor_y
 
-		dst := [4]f32 {
+		dst_rect := [4]f32 {
 			gx + (glyph.planeBounds.left * font_scale),
 			gy - (glyph.planeBounds.top * font_scale),
 			gx + (glyph.planeBounds.right * font_scale),
 			gy - (glyph.planeBounds.bottom * font_scale),
 		}
 
-		src := [4]f32 {
+		src_rect := [4]f32 {
 			glyph.atlasBounds.left / atlas_w,
 			1 - (glyph.atlasBounds.top / atlas_h),
 			glyph.atlasBounds.right / atlas_w,
@@ -196,21 +170,15 @@ imm_push_text_grad :: proc(
 		append(
 			&_batch_list,
 			Batch_Per_Data {
-				dst = dst,
-				src = src,
-				color_tl = color_tl,
-				color_tr = color_tr,
-				color_bl = color_bl,
-				color_br = color_br,
+				dst_rect = dst_rect,
+				src_rect = src_rect,
+				color_rect = color_rect,
 				kind = .MSDF,
 			},
 		)
 
 		cursor_x += glyph.advance * font_scale
 	}
-}
-imm_push_text :: proc(font: Font, text: string, pos: [2]f32, font_size: f32, color: RGBA8) {
-	imm_push_text_grad(font, text, pos, font_size, color, color, color, color)
 }
 text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 	if text == "" {
@@ -233,8 +201,10 @@ text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 			continue
 		}
 
-		glyph, ok := font.glyphs[char]
-		if !ok do glyph = font.glyphs['?']
+		glyph, good := font.glyphs[char]
+		if !good {
+			glyph = font.glyphs['?']
+		}
 
 		cursor_x += glyph.advance * font_scale
 	}

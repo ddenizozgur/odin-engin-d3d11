@@ -152,7 +152,7 @@ some_bg :: proc(et: f32) {
 	bl := r.vec4f32_to_rgba8({0.02, 0.15 + 0.05 * s4, 0.35 + 0.1 * s1, 1.0})
 	br := r.vec4f32_to_rgba8({0.15, 0.05, 0.25 + 0.05 * s2, 1.0})
 
-	r.imm_push_rect_grad({0, 0}, client_size, tl, tr, bl, br)
+	r.imm_push_rect({0, 0}, client_size, {tl, tr, bl, br})
 }
 
 liq_neon :: proc(et: f32) {
@@ -208,13 +208,15 @@ liq_neon :: proc(et: f32) {
 
 			cradii := (cell_w * 0.5) * scale
 
-			r.imm_push_rect_grad(
+			r.imm_push_rect(
 				base_pos + offset,
 				size,
-				r.vec4f32_to_rgba8(c0),
-				r.vec4f32_to_rgba8(c1),
-				r.vec4f32_to_rgba8(c2),
-				r.vec4f32_to_rgba8(c3),
+				{
+					r.vec4f32_to_rgba8(c0),
+					r.vec4f32_to_rgba8(c1),
+					r.vec4f32_to_rgba8(c2),
+					r.vec4f32_to_rgba8(c3),
+				},
 				cradii,
 			)
 		}

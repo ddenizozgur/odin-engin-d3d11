@@ -3,25 +3,25 @@ package r
 
 import "core:fmt"
 import "core:sys/windows"
-import "vendor:directx/d3d11"
-import "vendor:directx/d3d_compiler"
+import D3D11 "vendor:directx/d3d11"
+import D3D_COMPILER "vendor:directx/d3d_compiler"
 
 D3D11_VShader :: struct {
 	// Bundled at initialization, dont change
-	vshader: ^d3d11.IVertexShader,
-	ilayout: ^d3d11.IInputLayout,
+	vshader: ^D3D11.IVertexShader,
+	ilayout: ^D3D11.IInputLayout,
 }
 
 d3d11_vshader_init :: proc(
 	src: string,
 	dbg_name: cstring,
-	ilayout_desc: []d3d11.INPUT_ELEMENT_DESC,
+	ilayout_desc: []D3D11.INPUT_ELEMENT_DESC,
 	out: ^D3D11_VShader,
 ) -> bool {
-	vshader_blob: ^d3d11.IBlob
-	vshader_error: ^d3d11.IBlob
+	vshader_blob: ^D3D11.IBlob
+	vshader_error: ^D3D11.IBlob
 
-	hres := d3d_compiler.Compile(
+	hres := D3D_COMPILER.Compile(
 		raw_data(src),
 		len(src),
 		dbg_name,
@@ -65,11 +65,11 @@ d3d11_vshader_init :: proc(
 	return true
 }
 
-d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^d3d11.IPixelShader) -> bool {
-	pshader_blob: ^d3d11.IBlob
-	pshader_error: ^d3d11.IBlob
+d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^D3D11.IPixelShader) -> bool {
+	pshader_blob: ^D3D11.IBlob
+	pshader_error: ^D3D11.IBlob
 
-	hres := d3d_compiler.Compile(
+	hres := D3D_COMPILER.Compile(
 		raw_data(src),
 		len(src),
 		dbg_name,
@@ -104,13 +104,13 @@ d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^d3d11.IPixelSh
 	return true
 }
 
-d3d11_uniforms_init :: proc($T: typeid, out: ^^d3d11.IBuffer) -> bool {
+d3d11_uniforms_init :: proc($T: typeid, out: ^^D3D11.IBuffer) -> bool {
 	if size_of(T) % 16 != 0 {
 		assert(false, "Struct size must be align with 16 bytes")
 		return false
 	}
 
-	desc := d3d11.BUFFER_DESC {
+	desc := D3D11.BUFFER_DESC {
 		ByteWidth      = size_of(T),
 		Usage          = .DYNAMIC,
 		BindFlags      = {.CONSTANT_BUFFER},

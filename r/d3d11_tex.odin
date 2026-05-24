@@ -5,8 +5,8 @@ import "base:runtime"
 import "core:fmt"
 import "core:image"
 import "core:sys/windows"
-import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
+import D3D11 "vendor:directx/d3d11"
+import DXGI "vendor:directx/dxgi"
 
 RSrc_Kind :: enum {
 	Static,
@@ -17,8 +17,8 @@ RSrc_Kind :: enum {
 d3d11_usage_from_rsrc_kind :: proc(
 	kind: RSrc_Kind,
 ) -> (
-	usage: d3d11.USAGE,
-	cpu_access: d3d11.CPU_ACCESS_FLAGS,
+	usage: D3D11.USAGE,
+	cpu_access: D3D11.CPU_ACCESS_FLAGS,
 ) {
 	switch kind {
 	case .Static:
@@ -48,7 +48,7 @@ Tex2D_Fmt :: enum {
 d3d11_dxgi_fmt_from_tex2d :: proc(
 	fmt: Tex2D_Fmt,
 ) -> (
-	dxgi_fmt: dxgi.FORMAT,
+	dxgi_fmt: DXGI.FORMAT,
 	bytes_per_texel: u32,
 ) {
 	switch fmt {
@@ -66,7 +66,7 @@ d3d11_dxgi_fmt_from_tex2d :: proc(
 }
 
 D3D11_Tex2D :: struct {
-	srv:  ^d3d11.IShaderResourceView,
+	srv:  ^D3D11.IShaderResourceView,
 	size: [2]u32,
 }
 
@@ -81,14 +81,14 @@ d3d11_tex2d_alloc_ex :: proc(
 ) {
 	tex.size = size
 
-	d3d_tex: ^d3d11.ITexture2D
+	d3d_tex: ^D3D11.ITexture2D
 	defer d3d_tex->Release()
 
 	dxgi_fmt, bytes_per_texel := d3d11_dxgi_fmt_from_tex2d(tex2d_fmt)
 	{
 		usage, cpu_access := d3d11_usage_from_rsrc_kind(rsrc_kind)
 
-		desc := d3d11.TEXTURE2D_DESC {
+		desc := D3D11.TEXTURE2D_DESC {
 			Width = size.x,
 			Height = size.y,
 			MipLevels = 1,
@@ -101,7 +101,7 @@ d3d11_tex2d_alloc_ex :: proc(
 			MiscFlags = {},
 		}
 
-		init_data := d3d11.SUBRESOURCE_DATA {
+		init_data := D3D11.SUBRESOURCE_DATA {
 			pSysMem          = raw_data(bytes),
 			SysMemPitch      = size.x * bytes_per_texel,
 			SysMemSlicePitch = 0,
@@ -115,7 +115,7 @@ d3d11_tex2d_alloc_ex :: proc(
 	}
 
 	{
-		desc := d3d11.SHADER_RESOURCE_VIEW_DESC {
+		desc := D3D11.SHADER_RESOURCE_VIEW_DESC {
 			Format = dxgi_fmt,
 			ViewDimension = .TEXTURE2D,
 			Texture2D = {MipLevels = 1},

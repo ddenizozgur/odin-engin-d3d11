@@ -5,8 +5,8 @@ import "core:fmt"
 import "core:sys/windows"
 import "core:time"
 
-import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
+import D3D11 "vendor:directx/d3d11"
+import DXGI "vendor:directx/dxgi"
 
 import "../wm"
 
@@ -70,8 +70,8 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 			}
 		}
 
-		rt: ^d3d11.ITexture2D
-		_d3d11_per_window.swapchain1->GetBuffer(0, d3d11.ITexture2D_UUID, cast(^rawptr)&rt)
+		rt: ^D3D11.ITexture2D
+		_d3d11_per_window.swapchain1->GetBuffer(0, D3D11.ITexture2D_UUID, cast(^rawptr)&rt)
 		_d3d11_persist.device->CreateRenderTargetView(rt, nil, &_d3d11_per_window.default_rtv)
 		rt->Release()
 
@@ -79,7 +79,7 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 	}
 
 	{ 	// Viewport
-		viewport := d3d11.VIEWPORT {
+		viewport := D3D11.VIEWPORT {
 			TopLeftX = 0,
 			TopLeftY = 0,
 			Width    = size.x,
@@ -96,7 +96,7 @@ d3d11_load :: proc() -> bool {
 	_d3d11_load_persist() or_return
 
 	{ 	// Swapchain
-		desc := dxgi.SWAP_CHAIN_DESC1 {
+		desc := DXGI.SWAP_CHAIN_DESC1 {
 			Width = 0,
 			Height = 0,
 			Format = .R8G8B8A8_UNORM,
@@ -124,9 +124,9 @@ d3d11_load :: proc() -> bool {
 		}
 
 		{ 	// Waitable Obj
-			swapchain2: ^dxgi.ISwapChain2
+			swapchain2: ^DXGI.ISwapChain2
 			hres := _d3d11_per_window.swapchain1->QueryInterface(
-				dxgi.ISwapChain2_UUID,
+				DXGI.ISwapChain2_UUID,
 				cast(^rawptr)&swapchain2,
 			)
 			if windows.SUCCEEDED(hres) {
@@ -145,12 +145,12 @@ d3d11_load :: proc() -> bool {
 
 	// Render Target
 	{
-		// desc := d3d11.RENDER_TARGET_VIEW_DESC {
+		// desc := D3D11.RENDER_TARGET_VIEW_DESC {
 		// 	Format = .R8G8B8A8_UNORM_SRGB,
 		// 	ViewDimension = .TEXTURE2D
 		// }
-		rt: ^d3d11.ITexture2D
-		_d3d11_per_window.swapchain1->GetBuffer(0, d3d11.ITexture2D_UUID, cast(^rawptr)&rt)
+		rt: ^D3D11.ITexture2D
+		_d3d11_per_window.swapchain1->GetBuffer(0, D3D11.ITexture2D_UUID, cast(^rawptr)&rt)
 		_d3d11_persist.device->CreateRenderTargetView(rt, nil, &_d3d11_per_window.default_rtv)
 		rt->Release()
 	}
@@ -163,60 +163,60 @@ d3d11_load :: proc() -> bool {
 //
 @(private)
 _d3d11_persist: struct {
-	device:        ^d3d11.IDevice,
-	device_ctx:    ^d3d11.IDeviceContext,
-	dxgi_factory2: ^dxgi.IFactory2,
-	rasterizer:    ^d3d11.IRasterizerState,
-	blend_state:   ^d3d11.IBlendState,
-	samplers:      [Sampler_Kind]^d3d11.ISamplerState,
-	depths:        [Depth_Kind]^d3d11.IDepthStencilState,
+	device:        ^D3D11.IDevice,
+	device_ctx:    ^D3D11.IDeviceContext,
+	dxgi_factory2: ^DXGI.IFactory2,
+	rasterizer:    ^D3D11.IRasterizerState,
+	blend_state:   ^D3D11.IBlendState,
+	samplers:      [Sampler_Kind]^D3D11.ISamplerState,
+	depths:        [Depth_Kind]^D3D11.IDepthStencilState,
 }
 
 @(private) // We only have one window for now..
 _d3d11_per_window: struct {
-	swapchain1:            ^dxgi.ISwapChain1,
+	swapchain1:            ^DXGI.ISwapChain1,
 	swapchain_wait_handle: windows.HANDLE,
-	default_rtv:           ^d3d11.IRenderTargetView,
+	default_rtv:           ^D3D11.IRenderTargetView,
 	sync_interval:         u32,
 }
 
 @(private = "file")
 _d3d11_base_device_and_ctx :: proc(
 ) -> (
-	device: ^d3d11.IDevice,
-	ctx: ^d3d11.IDeviceContext,
+	device: ^D3D11.IDevice,
+	ctx: ^D3D11.IDeviceContext,
 	good: bool,
 ) {
 	// TODO: IFactory6 & adapter to handle multi-gpu ??
-	features := [?]d3d11.FEATURE_LEVEL{._11_0}
+	features := [?]D3D11.FEATURE_LEVEL{._11_0}
 
-	flags: d3d11.CREATE_DEVICE_FLAGS
+	flags: D3D11.CREATE_DEVICE_FLAGS
 	when ODIN_DEBUG {
 		flags += {.DEBUG}
 	}
 
-	hres := d3d11.CreateDevice(
+	hres := D3D11.CreateDevice(
 		nil,
 		.HARDWARE, // Driver type
 		nil,
 		flags,
 		&features[0],
 		len(features),
-		d3d11.SDK_VERSION,
+		D3D11.SDK_VERSION,
 		&device,
 		nil,
 		&ctx,
 	)
 
 	if windows.FAILED(hres) {
-		hres = d3d11.CreateDevice(
+		hres = D3D11.CreateDevice(
 			nil,
 			.WARP,
 			nil,
 			flags,
 			&features[0],
 			len(features),
-			d3d11.SDK_VERSION,
+			D3D11.SDK_VERSION,
 			&device,
 			nil,
 			&ctx,
@@ -240,20 +240,20 @@ _d3d11_load_persist :: proc() -> bool {
 			base_device_ctx->Release()
 		}
 
-		base_device->QueryInterface(d3d11.IDevice_UUID, cast(^rawptr)&_d3d11_persist.device)
+		base_device->QueryInterface(D3D11.IDevice_UUID, cast(^rawptr)&_d3d11_persist.device)
 		base_device_ctx->QueryInterface(
-			d3d11.IDeviceContext_UUID,
+			D3D11.IDeviceContext_UUID,
 			cast(^rawptr)&_d3d11_persist.device_ctx,
 		)
 	}
 
 	{
-		dxgi_device: ^dxgi.IDevice
-		dxgi_adapter: ^dxgi.IAdapter
+		dxgi_device: ^DXGI.IDevice
+		dxgi_adapter: ^DXGI.IAdapter
 
-		_d3d11_persist.device->QueryInterface(dxgi.IDevice_UUID, cast(^rawptr)&dxgi_device)
+		_d3d11_persist.device->QueryInterface(DXGI.IDevice_UUID, cast(^rawptr)&dxgi_device)
 		dxgi_device->GetAdapter(&dxgi_adapter)
-		dxgi_adapter->GetParent(dxgi.IFactory2_UUID, cast(^rawptr)&_d3d11_persist.dxgi_factory2)
+		dxgi_adapter->GetParent(DXGI.IFactory2_UUID, cast(^rawptr)&_d3d11_persist.dxgi_factory2)
 		// dxgi_device1->SetMaximumFrameLatency(1)	// dont work ??
 
 		dxgi_device->Release()
@@ -261,7 +261,7 @@ _d3d11_load_persist :: proc() -> bool {
 	}
 
 	{ 	// Rasterizer
-		desc := d3d11.RASTERIZER_DESC {
+		desc := D3D11.RASTERIZER_DESC {
 			FillMode      = .SOLID,
 			CullMode      = .NONE, // check
 			ScissorEnable = false,
@@ -270,7 +270,7 @@ _d3d11_load_persist :: proc() -> bool {
 	}
 
 	{ 	// Blend Alpha
-		desc: d3d11.BLEND_DESC
+		desc: D3D11.BLEND_DESC
 		{
 			desc.RenderTarget[0].BlendEnable = true
 			desc.RenderTarget[0].SrcBlend = .SRC_ALPHA
@@ -279,13 +279,13 @@ _d3d11_load_persist :: proc() -> bool {
 			desc.RenderTarget[0].DestBlendAlpha = .ZERO
 			desc.RenderTarget[0].BlendOp = .ADD
 			desc.RenderTarget[0].BlendOpAlpha = .ADD
-			desc.RenderTarget[0].RenderTargetWriteMask = cast(u8)d3d11.COLOR_WRITE_ENABLE_ALL
+			desc.RenderTarget[0].RenderTargetWriteMask = cast(u8)D3D11.COLOR_WRITE_ENABLE_ALL
 		}
 		_d3d11_persist.device->CreateBlendState(&desc, &_d3d11_persist.blend_state)
 	}
 
 	{ 	// Samplers
-		desc := d3d11.SAMPLER_DESC {
+		desc := D3D11.SAMPLER_DESC {
 			Filter         = .MIN_MAG_MIP_POINT,
 			AddressU       = .CLAMP,
 			AddressV       = .CLAMP,
@@ -299,7 +299,7 @@ _d3d11_load_persist :: proc() -> bool {
 	}
 
 	{ 	// Depth Stencil
-		desc := d3d11.DEPTH_STENCIL_DESC {
+		desc := D3D11.DEPTH_STENCIL_DESC {
 			DepthEnable    = false,
 			DepthWriteMask = .ALL,
 			DepthFunc      = .LESS,

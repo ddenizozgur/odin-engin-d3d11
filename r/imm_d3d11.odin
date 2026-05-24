@@ -6,7 +6,7 @@ import "core:fmt"
 import "core:math/linalg"
 import "core:mem"
 import "core:sys/windows"
-import "vendor:directx/d3d11"
+import D3D11 "vendor:directx/d3d11"
 
 imm_d3d11_resize_default_rtv :: proc() {
 	@(static) size_last_frame: [2]f32
@@ -29,7 +29,7 @@ imm_d3d11_resize_default_rtv :: proc() {
 			true,
 		)
 
-		sub_rsrc: d3d11.MAPPED_SUBRESOURCE
+		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
 		hres := _d3d11_persist.device_ctx->Map(
 			_imm_d3d11_persist.uniforms_gpu,
 			0,
@@ -50,8 +50,8 @@ imm_d3d11_bind_sampler :: proc(kind := Sampler_Kind.PointClamp) {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.sampler_kind = kind
+		_d3d11_persist.device_ctx->PSSetSamplers(0, 1, &_d3d11_persist.samplers[kind])
 	}
-	_d3d11_persist.device_ctx->PSSetSamplers(0, 1, &_d3d11_persist.samplers[kind])
 }
 
 imm_d3d11_bind_depth :: proc(kind := Depth_Kind.Noop) {
@@ -60,24 +60,24 @@ imm_d3d11_bind_depth :: proc(kind := Depth_Kind.Noop) {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.depth_kind = kind
+		_d3d11_persist.device_ctx->OMSetDepthStencilState(_d3d11_persist.depths[kind], 0)
 	}
-	_d3d11_persist.device_ctx->OMSetDepthStencilState(_d3d11_persist.depths[kind], 0)
 }
 
-imm_d3d11_bind_tex2d :: proc(srv: ^d3d11.IShaderResourceView) {
+imm_d3d11_bind_tex2d :: proc(srv: ^D3D11.IShaderResourceView) {
 	if srv != _imm_d3d11_last.srv {
 		if len(_batch_list) > 0 {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.srv = srv
+		// Bind to slot t0
+		_d3d11_persist.device_ctx->PSSetShaderResources(0, 1, &_imm_d3d11_last.srv)
 	}
-	// Bind to slot t0
-	_d3d11_persist.device_ctx->PSSetShaderResources(0, 1, &_imm_d3d11_last.srv)
 }
 
 imm_d3d11_load :: proc() -> bool {
 	{ 	// Batch Buffer
-		desc := d3d11.BUFFER_DESC {
+		desc := D3D11.BUFFER_DESC {
 			ByteWidth      = _BATCH_LIST_BYTES,
 			Usage          = .DYNAMIC,
 			BindFlags      = {.VERTEX_BUFFER},
@@ -125,18 +125,18 @@ imm_d3d11_load :: proc() -> bool {
 @(private = "file")
 _imm_d3d11_last: struct {
 	// vshader:      D3D11_VShader,
-	// pshader:      ^d3d11.IPixelShader,
+	// pshader:      ^D3D11.IPixelShader,
 	sampler_kind: Sampler_Kind,
 	depth_kind:   Depth_Kind,
-	srv:          ^d3d11.IShaderResourceView,
+	srv:          ^D3D11.IShaderResourceView,
 }
 
 @(private = "file")
 _imm_d3d11_persist: struct {
-	batch_list_gpu: ^d3d11.IBuffer,
-	uniforms_gpu:   ^d3d11.IBuffer,
+	batch_list_gpu: ^D3D11.IBuffer,
+	uniforms_gpu:   ^D3D11.IBuffer,
 	vshader:        D3D11_VShader,
-	pshader:        ^d3d11.IPixelShader,
+	pshader:        ^D3D11.IPixelShader,
 	uniforms:       _Imm_D3D11_Uniforms,
 }
 
@@ -145,7 +145,7 @@ _imm_d3d11_flush :: proc() {
 	defer clear(&_batch_list)
 
 	{ 	// Mapping Vertices
-		sub_rsrc: d3d11.MAPPED_SUBRESOURCE
+		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
 		hres := _d3d11_persist.device_ctx->Map(
 			_imm_d3d11_persist.batch_list_gpu,
 			0,
@@ -183,15 +183,15 @@ _Imm_D3D11_Uniforms :: struct #align (16) {
 }
 
 @(private = "file")
-_batch_list_ilayout_desc := []d3d11.INPUT_ELEMENT_DESC {
+_batch_list_ilayout_desc := []D3D11.INPUT_ELEMENT_DESC {
 	{"POS", 0, .R32G32B32A32_FLOAT, 0, 0, .INSTANCE_DATA, 1},
-	{"TEX", 0, .R32G32B32A32_FLOAT, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"COL", 0, .R8G8B8A8_UNORM, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"COL", 1, .R8G8B8A8_UNORM, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"COL", 2, .R8G8B8A8_UNORM, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"COL", 3, .R8G8B8A8_UNORM, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"CRAD", 0, .R32_FLOAT, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
-	{"KIND", 0, .R32_UINT, 0, d3d11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"TEX", 0, .R32G32B32A32_FLOAT, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"COL", 0, .R8G8B8A8_UNORM, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"COL", 1, .R8G8B8A8_UNORM, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"COL", 2, .R8G8B8A8_UNORM, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"COL", 3, .R8G8B8A8_UNORM, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"CRADII", 0, .R32_FLOAT, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
+	{"KIND", 0, .R32_UINT, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
 }
 
 @(private = "file")
@@ -210,7 +210,7 @@ struct vs_in {
   float4 color_tr : COL1;
   float4 color_bl : COL2;
   float4 color_br : COL3;
-  float cradii : CRAD;
+  float cradii : CRADII;
   uint kind : KIND;
   uint vertex_id : SV_VertexID;
 };
@@ -221,7 +221,7 @@ struct vs_out {
 	float2 tex2d_uv : TEXCOORD0;
 	float2 sdf_pos : TEXCOORD1;
 	float2 half_size : TEXCOORD2;
-	float cradii : CRAD;
+	float cradii : CRADII;
 	nointerpolation uint kind : KIND;
 };
 
