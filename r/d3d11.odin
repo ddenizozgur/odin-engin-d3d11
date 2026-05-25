@@ -100,7 +100,7 @@ d3d11_load :: proc() -> bool {
 			SampleDesc = {Count = 1, Quality = 0},
 			BufferUsage = {.RENDER_TARGET_OUTPUT},
 			BufferCount = 2,
-			Scaling = .NONE, // .STRETCH
+			Scaling = .STRETCH,
 			SwapEffect = .FLIP_DISCARD,
 			AlphaMode = .UNSPECIFIED,
 			Flags = {.FRAME_LATENCY_WAITABLE_OBJECT},
@@ -238,9 +238,8 @@ _d3d11_load_persist :: proc() -> bool {
 			hr := base_device->QueryInterface(D3D11.IDebug_UUID, cast(^rawptr)&debug)
 			if windows.SUCCEEDED(hr) {
 				info_queue: ^D3D11.IInfoQueue
-				if windows.SUCCEEDED(
-					debug->QueryInterface(D3D11.IInfoQueue_UUID, cast(^rawptr)&info_queue),
-				) {
+				hr = debug->QueryInterface(D3D11.IInfoQueue_UUID, cast(^rawptr)&info_queue)
+				if windows.SUCCEEDED(hr) {
 					info_queue->SetBreakOnSeverity(.CORRUPTION, true)
 					info_queue->SetBreakOnSeverity(.ERROR, true)
 					// info_queue->SetBreakOnSeverity(.WARNING, true)
