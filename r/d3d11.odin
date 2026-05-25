@@ -2,6 +2,7 @@
 package r
 
 import "core:fmt"
+import "core:sync"
 import "core:sys/windows"
 import "core:time"
 
@@ -32,7 +33,12 @@ d3d11_present :: proc(sync_interval := u32(0)) {
 		time.sleep(10 * time.Millisecond) // TODO: !! Hardcoded !!
 		return
 	}
-	_d3d11_per_window.swapchain1->Present(sync_interval, {})
+
+	flags: DXGI.PRESENT
+	if .ALLOW_TEARING in _d3d11_per_window.swapchain_flags && sync_interval == 0 {
+		flags += {.ALLOW_TEARING}
+	}
+	_d3d11_per_window.swapchain1->Present(sync_interval, flags)
 }
 
 d3d11_clear_default_rtv :: proc(color: RGBA8) {
@@ -57,7 +63,7 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 			0,
 			0,
 			.R8G8B8A8_UNORM,
-			{.FRAME_LATENCY_WAITABLE_OBJECT},
+			_d3d11_per_window.swapchain_flags,
 		)
 		when ODIN_DEBUG {
 			if windows.FAILED(hr) {
@@ -88,10 +94,15 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 }
 
 // TODO: Error enum
-d3d11_load :: proc() -> bool {
+d3d11_load :: proc(tearing := false) -> bool {
 	_d3d11_load_persist() or_return
 
 	{ 	// Swapchain
+		_d3d11_per_window.swapchain_flags = {.FRAME_LATENCY_WAITABLE_OBJECT}
+		if tearing && d3d11_is_tearing_supported() {
+			_d3d11_per_window.swapchain_flags += {.ALLOW_TEARING}
+		}
+
 		desc := DXGI.SWAP_CHAIN_DESC1 {
 			Width = 0,
 			Height = 0,
@@ -103,7 +114,7 @@ d3d11_load :: proc() -> bool {
 			Scaling = .STRETCH,
 			SwapEffect = .FLIP_DISCARD,
 			AlphaMode = .UNSPECIFIED,
-			Flags = {.FRAME_LATENCY_WAITABLE_OBJECT},
+			Flags = _d3d11_per_window.swapchain_flags,
 		}
 
 		hr := _d3d11_persist.dxgi_factory2->CreateSwapChainForHwnd(
@@ -152,6 +163,16 @@ d3d11_load :: proc() -> bool {
 	return true
 }
 
+d3d11_is_tearing_supported :: proc() -> (is: b32) {
+	factory5: ^DXGI.IFactory5
+	hr := _d3d11_persist.dxgi_factory2->QueryInterface(DXGI.IFactory5_UUID, cast(^rawptr)&factory5)
+	if windows.SUCCEEDED(hr) {
+		factory5->CheckFeatureSupport(.PRESENT_ALLOW_TEARING, &is, size_of(is))
+		factory5->Release()
+	}
+	return is
+}
+
 //
 // Privates
 //
@@ -169,6 +190,7 @@ _d3d11_persist: struct {
 @(private) // We only have one window for now..
 _d3d11_per_window: struct {
 	swapchain1:      ^DXGI.ISwapChain1,
+	swapchain_flags: DXGI.SWAP_CHAIN,
 	waitable_handle: windows.HANDLE,
 	default_rtv:     ^D3D11.IRenderTargetView,
 }
