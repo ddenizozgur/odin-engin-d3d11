@@ -30,14 +30,14 @@ imm_d3d11_resize_default_rtv :: proc() {
 		)
 
 		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
-		hres := _d3d11_persist.device_ctx->Map(
+		hr := _d3d11_persist.device_ctx->Map(
 			_imm_d3d11_persist.uniforms_gpu,
 			0,
 			.WRITE_DISCARD,
 			{},
 			&sub_rsrc,
 		)
-		if windows.SUCCEEDED(hres) {
+		if windows.SUCCEEDED(hr) {
 			mem.copy(sub_rsrc.pData, &_imm_d3d11_persist.uniforms, size_of(_Imm_D3D11_Uniforms))
 			_d3d11_persist.device_ctx->Unmap(_imm_d3d11_persist.uniforms_gpu, 0)
 		}
@@ -46,7 +46,7 @@ imm_d3d11_resize_default_rtv :: proc() {
 
 imm_d3d11_bind_sampler :: proc(kind := Sampler_Kind.PointClamp) {
 	if kind != _imm_d3d11_last.sampler_kind {
-		if len(_batch_list) > 0 {
+		if len(_batch) > 0 {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.sampler_kind = kind
@@ -56,7 +56,7 @@ imm_d3d11_bind_sampler :: proc(kind := Sampler_Kind.PointClamp) {
 
 imm_d3d11_bind_depth :: proc(kind := Depth_Kind.Noop) {
 	if kind != _imm_d3d11_last.depth_kind {
-		if len(_batch_list) > 0 {
+		if len(_batch) > 0 {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.depth_kind = kind
@@ -66,7 +66,7 @@ imm_d3d11_bind_depth :: proc(kind := Depth_Kind.Noop) {
 
 imm_d3d11_bind_tex2d :: proc(srv: ^D3D11.IShaderResourceView) {
 	if srv != _imm_d3d11_last.srv {
-		if len(_batch_list) > 0 {
+		if len(_batch) > 0 {
 			_imm_d3d11_flush()
 		}
 		_imm_d3d11_last.srv = srv
@@ -74,18 +74,29 @@ imm_d3d11_bind_tex2d :: proc(srv: ^D3D11.IShaderResourceView) {
 		_d3d11_persist.device_ctx->PSSetShaderResources(0, 1, &_imm_d3d11_last.srv)
 	}
 }
+/*
+imm_d3d11_bind_scissor :: proc(rect: D3D11.RECT) {
+	// left, top, right, bottom
+	if rect != _imm_d3d11_last.scissor_rect {
+		if len(_batch) > 0 do _imm_d3d11_flush()
 
+		_imm_d3d11_last.scissor_rect = rect
+		rect_copy := rect
+		_d3d11_persist.device_ctx->RSSetScissorRects(1, &rect_copy)
+	}
+}
+*/
 imm_d3d11_load :: proc() -> bool {
 	{ 	// Batch Buffer
 		desc := D3D11.BUFFER_DESC {
-			ByteWidth      = _BATCH_LIST_BYTES,
+			ByteWidth      = _BATCH_BYTES,
 			Usage          = .DYNAMIC,
 			BindFlags      = {.VERTEX_BUFFER},
 			CPUAccessFlags = {.WRITE},
 		}
 
-		hres := _d3d11_persist.device->CreateBuffer(&desc, nil, &_imm_d3d11_persist.batch_list_gpu)
-		if windows.FAILED(hres) {
+		hr := _d3d11_persist.device->CreateBuffer(&desc, nil, &_imm_d3d11_persist.batch_list_gpu)
+		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] Failed to create IBuffer")
 			return false
 		}
@@ -95,7 +106,7 @@ imm_d3d11_load :: proc() -> bool {
 		d3d11_vshader_init(
 			_imm_d3d11_shader,
 			"imm_d3d11_shader.hlsl",
-			_batch_list_ilayout_desc,
+			_batch_ilayout_desc,
 			&_imm_d3d11_persist.vshader,
 		) or_return
 
@@ -142,23 +153,19 @@ _imm_d3d11_persist: struct {
 
 @(private)
 _imm_d3d11_flush :: proc() {
-	defer clear(&_batch_list)
+	defer clear(&_batch)
 
 	{ 	// Mapping Vertices
 		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
-		hres := _d3d11_persist.device_ctx->Map(
+		hr := _d3d11_persist.device_ctx->Map(
 			_imm_d3d11_persist.batch_list_gpu,
 			0,
 			.WRITE_DISCARD,
 			{},
 			&sub_rsrc,
 		)
-		if windows.SUCCEEDED(hres) {
-			mem.copy(
-				sub_rsrc.pData,
-				raw_data(_batch_list[:]),
-				len(_batch_list) * size_of(Batch_Per_Data),
-			)
+		if windows.SUCCEEDED(hr) {
+			mem.copy(sub_rsrc.pData, raw_data(_batch[:]), len(_batch) * size_of(Batch_Per_Data))
 			_d3d11_persist.device_ctx->Unmap(_imm_d3d11_persist.batch_list_gpu, 0)
 		}
 	}
@@ -173,7 +180,7 @@ _imm_d3d11_flush :: proc() {
 			&stride,
 			&offset,
 		)
-		_d3d11_persist.device_ctx->DrawInstanced(4, cast(u32)len(_batch_list), 0, 0)
+		_d3d11_persist.device_ctx->DrawInstanced(4, cast(u32)len(_batch), 0, 0)
 	}
 }
 
@@ -183,7 +190,7 @@ _Imm_D3D11_Uniforms :: struct #align (16) {
 }
 
 @(private = "file")
-_batch_list_ilayout_desc := []D3D11.INPUT_ELEMENT_DESC {
+_batch_ilayout_desc := []D3D11.INPUT_ELEMENT_DESC {
 	{"POS", 0, .R32G32B32A32_FLOAT, 0, 0, .INSTANCE_DATA, 1},
 	{"TEX", 0, .R32G32B32A32_FLOAT, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
 	{"COL", 0, .R8G8B8A8_UNORM, 0, D3D11.APPEND_ALIGNED_ELEMENT, .INSTANCE_DATA, 1},
@@ -322,9 +329,9 @@ float4 ps_main(vs_out input) : SV_TARGET {
     float2 screen_tex_size = float2(1.0, 1.0) / fwidth(input.tex2d_uv);
 
     float screen_px_range = max(0.5 * dot(unit_range, screen_tex_size), 1.0);
-    float screen_px_distance = screen_px_range * sd;
+    float screen_px_dist = screen_px_range * sd;
 
-    float opacity = clamp(screen_px_distance + TEXT_THICKNESS, 0.0, 1.0);
+    float opacity = clamp(screen_px_dist + TEXT_THICKNESS, 0.0, 1.0);
     tex_color = float4(1.0, 1.0, 1.0, opacity);
 	} break;
 	// default:

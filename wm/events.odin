@@ -170,9 +170,9 @@ _window_proc :: proc "system" (
 		append(
 			&_evnts_this_frame,
 			Event_Key {
-				code = keycode,
-				mod = keymod,
-				state = is_down ? .Pressed : .Released,
+				code      = keycode,
+				mod       = keymod,
+				state     = is_down ? .Pressed : .Released,
 				is_repeat = is_repeat,
 				// repeat_count = is_repeat ? lparam & 0xffff : 0,
 			},

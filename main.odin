@@ -12,7 +12,6 @@ varela: r.Font
 
 to_init :: proc() -> bool {
 	r.d3d11_load()
-	r.d3d11_set_sync_interval(0)
 	r.imm_d3d11_load()
 
 	{
@@ -38,6 +37,7 @@ to_r :: proc(dt: f32) {
 
 	r.d3d11_clear_default_rtv(r.NAYSAYER_BG)
 	defer r.d3d11_present()
+
 	{
 		r.IMM_FRAME_SCOPED()
 
@@ -46,7 +46,7 @@ to_r :: proc(dt: f32) {
 
 		draw_some_text(varela, 0, 1)
 
-		// r.imm_push_rect(mouse_pos, {120, 120}, {0xff, 0xff, 0xff, 0x55})
+		r.imm_push_rect(mouse_pos, {120, 120}, r.BLUE)
 
 		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
 	}

@@ -20,7 +20,7 @@ imm_begin_frame :: proc() {
 	d3d11_set_default_rtv() // Flip model unbind rtv after present()
 }
 imm_end_frame :: proc() {
-	if len(_batch_list) > 0 {
+	if len(_batch) > 0 {
 		_imm_d3d11_flush()
 	}
 }
@@ -34,7 +34,7 @@ imm_push_rect :: proc(
 	color_rect: [4]RGBA8, // LT, LR, BL, BR
 	cradii := f32(0),
 ) {
-	if len(_batch_list) + 1 > cap(_batch_list) {
+	if len(_batch) + 1 > cap(_batch) {
 		_imm_d3d11_flush()
 	}
 
@@ -42,7 +42,7 @@ imm_push_rect :: proc(
 	br := pos + size
 
 	append(
-		&_batch_list,
+		&_batch,
 		Batch_Per_Data {
 			dst_rect = {tl.x, tl.y, br.x, br.y},
 			color_rect = color_rect,
@@ -68,7 +68,7 @@ imm_push_tex2d_ex :: proc(
 	tint_rect := cast([4]RGBA8)WHITE, // LT, LR, BL, BR
 	cradii := f32(0),
 ) {
-	if len(_batch_list) + 1 > cap(_batch_list) {
+	if len(_batch) + 1 > cap(_batch) {
 		_imm_d3d11_flush()
 	}
 
@@ -88,7 +88,7 @@ imm_push_tex2d_ex :: proc(
 	}
 
 	append(
-		&_batch_list,
+		&_batch,
 		Batch_Per_Data {
 			src_rect = src_rect,
 			dst_rect = {dst_tl.x, dst_tl.y, dst_br.x, dst_br.y},
@@ -130,7 +130,7 @@ imm_push_text :: proc(
 	atlas_h := cast(f32)font.atlas.size.y
 
 	for char in text {
-		if len(_batch_list) + 1 > cap(_batch_list) {
+		if len(_batch) + 1 > cap(_batch) {
 			_imm_d3d11_flush()
 		}
 
@@ -168,7 +168,7 @@ imm_push_text :: proc(
 		}
 
 		append(
-			&_batch_list,
+			&_batch,
 			Batch_Per_Data {
 				dst_rect = dst_rect,
 				src_rect = src_rect,
@@ -216,8 +216,8 @@ text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 // Privates
 //
 @(private)
-_batch_list: [dynamic; _BATCH_LIST_LEN]Batch_Per_Data
+_batch: [dynamic; _BATCH_LEN]Batch_Per_Data
 @(private)
-_BATCH_LIST_BYTES :: mem.Kilobyte * 512
+_BATCH_BYTES :: mem.Kilobyte * 512
 @(private)
-_BATCH_LIST_LEN :: _BATCH_LIST_BYTES / size_of(Batch_Per_Data)
+_BATCH_LEN :: _BATCH_BYTES / size_of(Batch_Per_Data)

@@ -4,10 +4,10 @@ package wm
 // Types
 //
 Event_Key :: struct {
-	code:         Key_Code,
-	mod:          Key_Modifiers,
-	state:        Key_State,
-	is_repeat:    bool,
+	code:      Key_Code,
+	mod:       Key_Modifiers,
+	state:     Key_State,
+	is_repeat: bool,
 	// repeat_count: int,
 }
 Event_Text :: distinct rune

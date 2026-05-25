@@ -21,7 +21,7 @@ d3d11_vshader_init :: proc(
 	vshader_blob: ^D3D11.IBlob
 	vshader_error: ^D3D11.IBlob
 
-	hres := D3D_COMPILER.Compile(
+	hr := D3D_COMPILER.Compile(
 		raw_data(src),
 		len(src),
 		dbg_name,
@@ -38,7 +38,7 @@ d3d11_vshader_init :: proc(
 		vshader_blob->Release()
 	}
 
-	if windows.FAILED(hres) {
+	if windows.FAILED(hr) {
 		err_ptr := cast([^]byte)vshader_error->GetBufferPointer()
 		err_len := vshader_error->GetBufferSize()
 		err_msg := cast(string)err_ptr[:err_len]
@@ -69,7 +69,7 @@ d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^D3D11.IPixelSh
 	pshader_blob: ^D3D11.IBlob
 	pshader_error: ^D3D11.IBlob
 
-	hres := D3D_COMPILER.Compile(
+	hr := D3D_COMPILER.Compile(
 		raw_data(src),
 		len(src),
 		dbg_name,
@@ -86,7 +86,7 @@ d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^D3D11.IPixelSh
 		pshader_blob->Release()
 	}
 
-	if windows.FAILED(hres) {
+	if windows.FAILED(hr) {
 		err_ptr := cast([^]byte)pshader_error->GetBufferPointer()
 		err_len := pshader_error->GetBufferSize()
 		err_msg := cast(string)err_ptr[:err_len]
@@ -117,8 +117,8 @@ d3d11_uniforms_init :: proc($T: typeid, out: ^^D3D11.IBuffer) -> bool {
 		CPUAccessFlags = {.WRITE},
 	}
 
-	hres := _d3d11_persist.device->CreateBuffer(&desc, nil, out)
-	if windows.FAILED(hres) {
+	hr := _d3d11_persist.device->CreateBuffer(&desc, nil, out)
+	if windows.FAILED(hr) {
 		fmt.eprintfln("[ERROR] Failed to create uniform buffer")
 		return false
 	}

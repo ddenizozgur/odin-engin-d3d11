@@ -20,23 +20,19 @@ Depth_Kind :: enum {
 	MaskAll_FuncLess,
 }
 
-d3d11_set_sync_interval :: #force_inline proc(si: u32) {
-	_d3d11_per_window.sync_interval = si
-}
-
 d3d11_swapchain_wait :: proc() {
 	// Otherwise window will be stuck when minimized
 	if !wm.window_is_minimized() {
-		windows.WaitForSingleObject(_d3d11_per_window.swapchain_wait_handle, windows.INFINITE)
+		windows.WaitForSingleObject(_d3d11_per_window.waitable_handle, windows.INFINITE)
 	}
 }
 
-d3d11_present :: proc() {
+d3d11_present :: proc(sync_interval := u32(0)) {
 	if wm.window_is_minimized() {
 		time.sleep(10 * time.Millisecond) // TODO: !! Hardcoded !!
 		return
 	}
-	_d3d11_per_window.swapchain1->Present(_d3d11_per_window.sync_interval, {})
+	_d3d11_per_window.swapchain1->Present(sync_interval, {})
 }
 
 d3d11_clear_default_rtv :: proc(color: RGBA8) {
@@ -56,7 +52,7 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 			_d3d11_per_window.default_rtv = nil
 		}
 
-		hres := _d3d11_per_window.swapchain1->ResizeBuffers(
+		hr := _d3d11_per_window.swapchain1->ResizeBuffers(
 			2,
 			0,
 			0,
@@ -64,7 +60,7 @@ d3d11_resize_default_rtv :: proc(size: [2]f32) {
 			{.FRAME_LATENCY_WAITABLE_OBJECT},
 		)
 		when ODIN_DEBUG {
-			if windows.FAILED(hres) {
+			if windows.FAILED(hr) {
 				fmt.eprintfln("[ERROR] DXGI ResizeBuffers failed")
 				return
 			}
@@ -110,7 +106,7 @@ d3d11_load :: proc() -> bool {
 			Flags = {.FRAME_LATENCY_WAITABLE_OBJECT},
 		}
 
-		hres := _d3d11_persist.dxgi_factory2->CreateSwapChainForHwnd(
+		hr := _d3d11_persist.dxgi_factory2->CreateSwapChainForHwnd(
 			_d3d11_persist.device,
 			wm.get_hwnd(),
 			&desc,
@@ -118,29 +114,27 @@ d3d11_load :: proc() -> bool {
 			nil,
 			&_d3d11_per_window.swapchain1,
 		)
-		if windows.FAILED(hres) {
+		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] DXGI swapchain creation failed")
 			return false
 		}
 
-		{ 	// Waitable Obj
-			swapchain2: ^DXGI.ISwapChain2
-			hres := _d3d11_per_window.swapchain1->QueryInterface(
-				DXGI.ISwapChain2_UUID,
-				cast(^rawptr)&swapchain2,
-			)
-			if windows.SUCCEEDED(hres) {
-				swapchain2->SetMaximumFrameLatency(1)
-				_d3d11_per_window.swapchain_wait_handle = swapchain2->GetFrameLatencyWaitableObject(
-
-				)
-				swapchain2->Release()
-			} else {
-				fmt.eprintfln("[WARNING] Failed to get ISwapChain2 for waitable object")
-			}
-		}
-
 		_d3d11_persist.dxgi_factory2->MakeWindowAssociation(wm.get_hwnd(), {.NO_ALT_ENTER})
+	}
+
+	{ 	// Waitable Obj
+		swapchain2: ^DXGI.ISwapChain2
+		hr := _d3d11_per_window.swapchain1->QueryInterface(
+			DXGI.ISwapChain2_UUID,
+			cast(^rawptr)&swapchain2,
+		)
+		if windows.SUCCEEDED(hr) {
+			swapchain2->SetMaximumFrameLatency(1)
+			_d3d11_per_window.waitable_handle = swapchain2->GetFrameLatencyWaitableObject()
+			swapchain2->Release()
+		} else {
+			fmt.eprintfln("[WARNING] Failed to get ISwapChain2 for waitable object")
+		}
 	}
 
 	// Render Target
@@ -174,17 +168,16 @@ _d3d11_persist: struct {
 
 @(private) // We only have one window for now..
 _d3d11_per_window: struct {
-	swapchain1:            ^DXGI.ISwapChain1,
-	swapchain_wait_handle: windows.HANDLE,
-	default_rtv:           ^D3D11.IRenderTargetView,
-	sync_interval:         u32,
+	swapchain1:      ^DXGI.ISwapChain1,
+	waitable_handle: windows.HANDLE,
+	default_rtv:     ^D3D11.IRenderTargetView,
 }
 
 @(private = "file")
 _d3d11_base_device_and_ctx :: proc(
 ) -> (
 	device: ^D3D11.IDevice,
-	ctx: ^D3D11.IDeviceContext,
+	device_ctx: ^D3D11.IDeviceContext,
 	good: bool,
 ) {
 	// TODO: IFactory6 & adapter to handle multi-gpu ??
@@ -195,7 +188,7 @@ _d3d11_base_device_and_ctx :: proc(
 		flags += {.DEBUG}
 	}
 
-	hres := D3D11.CreateDevice(
+	hr := D3D11.CreateDevice(
 		nil,
 		.HARDWARE, // Driver type
 		nil,
@@ -205,11 +198,11 @@ _d3d11_base_device_and_ctx :: proc(
 		D3D11.SDK_VERSION,
 		&device,
 		nil,
-		&ctx,
+		&device_ctx,
 	)
 
-	if windows.FAILED(hres) {
-		hres = D3D11.CreateDevice(
+	if windows.FAILED(hr) {
+		hr = D3D11.CreateDevice(
 			nil,
 			.WARP,
 			nil,
@@ -219,16 +212,16 @@ _d3d11_base_device_and_ctx :: proc(
 			D3D11.SDK_VERSION,
 			&device,
 			nil,
-			&ctx,
+			&device_ctx,
 		)
 
-		if windows.FAILED(hres) {
+		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] D3D11 base device creation failed")
 			return
 		}
 	}
 
-	return device, ctx, true
+	return device, device_ctx, true
 }
 
 @(private = "file") // TODO: Error enum
@@ -238,6 +231,23 @@ _d3d11_load_persist :: proc() -> bool {
 		defer {
 			base_device->Release()
 			base_device_ctx->Release()
+		}
+
+		when ODIN_DEBUG {
+			debug: ^D3D11.IDebug
+			hr := base_device->QueryInterface(D3D11.IDebug_UUID, cast(^rawptr)&debug)
+			if windows.SUCCEEDED(hr) {
+				info_queue: ^D3D11.IInfoQueue
+				if windows.SUCCEEDED(
+					debug->QueryInterface(D3D11.IInfoQueue_UUID, cast(^rawptr)&info_queue),
+				) {
+					info_queue->SetBreakOnSeverity(.CORRUPTION, true)
+					info_queue->SetBreakOnSeverity(.ERROR, true)
+					// info_queue->SetBreakOnSeverity(.WARNING, true)
+					info_queue->Release()
+				}
+				debug->Release()
+			}
 		}
 
 		base_device->QueryInterface(D3D11.IDevice_UUID, cast(^rawptr)&_d3d11_persist.device)
@@ -254,7 +264,7 @@ _d3d11_load_persist :: proc() -> bool {
 		_d3d11_persist.device->QueryInterface(DXGI.IDevice_UUID, cast(^rawptr)&dxgi_device)
 		dxgi_device->GetAdapter(&dxgi_adapter)
 		dxgi_adapter->GetParent(DXGI.IFactory2_UUID, cast(^rawptr)&_d3d11_persist.dxgi_factory2)
-		// dxgi_device1->SetMaximumFrameLatency(1)	// dont work ??
+		// dxgi_device1->SetMaximumFrameLatency(1)	// not work ??
 
 		dxgi_device->Release()
 		dxgi_adapter->Release()
