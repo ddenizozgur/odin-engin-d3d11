@@ -42,11 +42,11 @@ to_r :: proc(dt: f32) {
 		r.IMM_FRAME_SCOPED()
 
 		some_bg(et)
-		// liq_neon(et)
+		liq_neon(et)
 
-		draw_some_text(varela, 0, 1)
+		draw_some_text(varela, 0, math.sin_f32(et) * 0.5 + 1)
 
-		r.imm_push_rect(mouse_pos, {120, 120}, r.BLUE)
+		// r.imm_push_rect(mouse_pos, {120, 120}, r.BLUE)
 
 		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
 	}

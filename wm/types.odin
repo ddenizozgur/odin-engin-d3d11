@@ -51,9 +51,7 @@ Mouse_Button :: enum {
 	XButton2,
 }
 
-Key_Modifiers :: bit_set[_Key_Modifier_Bit]
-@(private = "file")
-_Key_Modifier_Bit :: enum {
+Key_Modifier :: enum {
 	Shift,
 	Ctrl,
 	Alt, // AltGr ????
@@ -61,6 +59,7 @@ _Key_Modifier_Bit :: enum {
 	CapsLock,
 	NumLock,
 }
+Key_Modifiers :: bit_set[Key_Modifier]
 
 Key_Code :: enum u32 {
 	Null = 0,

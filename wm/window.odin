@@ -50,12 +50,12 @@ window_set_focus :: proc() {
 }
 
 // TODO: check??
-window_minimize :: #force_inline proc() {windows.ShowWindow(_hwnd, windows.SW_MINIMIZE)}
-window_maximize :: #force_inline proc() {windows.ShowWindow(_hwnd, windows.SW_MAXIMIZE)}
-window_restore :: #force_inline proc() {windows.ShowWindow(_hwnd, windows.SW_RESTORE)}
+window_minimize :: proc() {windows.ShowWindow(_hwnd, windows.SW_MINIMIZE)}
+window_maximize :: proc() {windows.ShowWindow(_hwnd, windows.SW_MAXIMIZE)}
+window_restore :: proc() {windows.ShowWindow(_hwnd, windows.SW_RESTORE)}
 
-window_is_minimized :: #force_inline proc() -> bool {return cast(bool)windows.IsIconic(_hwnd)}
-window_is_maximized :: #force_inline proc() -> bool {return cast(bool)windows.IsZoomed(_hwnd)}
+window_is_minimized :: proc() -> bool {return cast(bool)windows.IsIconic(_hwnd)}
+window_is_maximized :: proc() -> bool {return cast(bool)windows.IsZoomed(_hwnd)}
 
 window_is_focused :: proc() -> bool {
 	active := windows.GetActiveWindow()
@@ -98,7 +98,7 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 		hInstance     = hinst,
 		hIcon         = hicon,
 		hCursor       = windows.LoadCursorA(nil, windows.IDC_ARROW),
-		hbrBackground = cast(windows.HBRUSH)windows.GetStockObject(windows.WHITE_BRUSH), // cast(HBRUSH)(COLOR_WINDOW + 1);DKGRAY_BRUSH
+		hbrBackground = cast(windows.HBRUSH)windows.GetStockObject(windows.WHITE_BRUSH), // This param doesnt matter since we provide WS_EX_NOREDIRECTIONBITMAP
 		lpszClassName = _WNDCLASS_NAME,
 	}
 	if windows.RegisterClassW(&wnd_class) == 0 {
@@ -174,10 +174,10 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 		fmt.eprintfln("[ERROR] Window creation failed")
 		return false
 	}
-	windows.UpdateWindow(_hwnd)
-	// ShowCursor(style == .WINDOWED);
-	windows.ShowWindow(_hwnd, windows.SW_SHOW)
 
+	// ShowCursor(style == .WINDOWED);
+	windows.UpdateWindow(_hwnd)
+	windows.ShowWindow(_hwnd, windows.SW_SHOW)
 	// _hdc = windows.GetDC(_hwnd)
 
 	return true
