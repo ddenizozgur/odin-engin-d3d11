@@ -19,7 +19,7 @@ imm_d3d11_resize_default_rtv :: proc() {
 	d3d11_resize_default_rtv(size_this_frame)
 
 	{ 	// Map uniforms
-		_imm_d3d11_persist.uniforms.proj_matrix = linalg.matrix_ortho3d_f32(
+		_batch_uniforms.proj_matrix = linalg.matrix_ortho3d_f32(
 			0,
 			size_this_frame.x,
 			size_this_frame.y,
@@ -38,7 +38,7 @@ imm_d3d11_resize_default_rtv :: proc() {
 			&sub_rsrc,
 		)
 		if windows.SUCCEEDED(hr) {
-			mem.copy(sub_rsrc.pData, &_imm_d3d11_persist.uniforms, size_of(_Imm_D3D11_Uniforms))
+			mem.copy(sub_rsrc.pData, &_batch_uniforms, size_of(_Batch_Uniforms))
 			_d3d11_persist.device_ctx->Unmap(_imm_d3d11_persist.uniforms_gpu, 0)
 		}
 	}
@@ -116,7 +116,7 @@ imm_d3d11_load :: proc() -> bool {
 			&_imm_d3d11_persist.pshader,
 		) or_return
 
-		d3d11_uniforms_init(_Imm_D3D11_Uniforms, &_imm_d3d11_persist.uniforms_gpu) or_return
+		d3d11_uniforms_init(_Batch_Uniforms, &_imm_d3d11_persist.uniforms_gpu) or_return
 	}
 
 	{ 	// Bind
@@ -148,7 +148,6 @@ _imm_d3d11_persist: struct {
 	uniforms_gpu:   ^D3D11.IBuffer,
 	vshader:        D3D11_VShader,
 	pshader:        ^D3D11.IPixelShader,
-	uniforms:       _Imm_D3D11_Uniforms,
 }
 
 @(private)
@@ -185,9 +184,11 @@ _imm_d3d11_flush :: proc() {
 }
 
 @(private = "file")
-_Imm_D3D11_Uniforms :: struct #align (16) {
+_Batch_Uniforms :: struct #align (16) {
 	proj_matrix: matrix[4, 4]f32,
 }
+@(private = "file")
+_batch_uniforms: _Batch_Uniforms
 
 @(private = "file")
 _batch_ilayout_desc := []D3D11.INPUT_ELEMENT_DESC {

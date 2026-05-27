@@ -216,8 +216,8 @@ text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 // Privates
 //
 @(private)
-_batch: [dynamic; _BATCH_LEN]Batch_Per_Data
-@(private)
 _BATCH_BYTES :: mem.Kilobyte * 512
 @(private)
 _BATCH_LEN :: _BATCH_BYTES / size_of(Batch_Per_Data)
+@(private)
+_batch: [dynamic; _BATCH_LEN]Batch_Per_Data

@@ -2,7 +2,6 @@
 package wm
 
 import "base:runtime"
-import "core:fmt"
 import "core:sys/windows"
 import "core:unicode"
 import "core:unicode/utf16"
@@ -89,7 +88,7 @@ _window_proc :: proc "system" (
 		append(&_evnts_this_frame, Event_Window_Focus{})
 	case windows.WM_KILLFOCUS:
 		append(&_evnts_this_frame, Event_Window_UnFocus{})
-	// TODO: ??? windows.ReleaseCapture()
+		_release_btns()
 
 	case windows.WM_INPUT: // TODO: rawinput
 	case windows.WM_PAINT:
@@ -100,25 +99,25 @@ _window_proc :: proc "system" (
 	// DwmFlush();
 
 	case windows.WM_LBUTTONUP:
-		_btns_update(hwnd, .Left, false)
+		_update_btns(.Left, false)
 	case windows.WM_LBUTTONDOWN:
-		_btns_update(hwnd, .Left, true)
+		_update_btns(.Left, true)
 	case windows.WM_MBUTTONUP:
-		_btns_update(hwnd, .Middle, false)
+		_update_btns(.Middle, false)
 	case windows.WM_MBUTTONDOWN:
-		_btns_update(hwnd, .Middle, true)
+		_update_btns(.Middle, true)
 	case windows.WM_RBUTTONUP:
-		_btns_update(hwnd, .Right, false)
+		_update_btns(.Right, false)
 	case windows.WM_RBUTTONDOWN:
-		_btns_update(hwnd, .Right, true)
+		_update_btns(.Right, true)
 	case windows.WM_XBUTTONUP:
-		_btns_update(hwnd, windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, false)
+		_update_btns(windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, false)
 		// https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-xbuttondown
 		// Unlike the WM_LBUTTONDOWN, WM_MBUTTONDOWN, and WM_RBUTTONDOWN messages,
 		// an application should return TRUE from this message if it processes it
 		result = 1
 	case windows.WM_XBUTTONDOWN:
-		_btns_update(hwnd, windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, true)
+		_update_btns(windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, true)
 		result = 1
 
 	case windows.WM_MOUSEMOVE:
@@ -238,22 +237,45 @@ _btns_prev_frame: [Mouse_Button]bool
 _btns_this_frame: [Mouse_Button]bool
 @(private = "file")
 _evnts_this_frame: [dynamic]Event
+@(private = "file")
+_btns_down_cnt: int
 
 @(private = "file")
 _MOUSE_SCROLL_NORMVAL :: f32(120)
 
 @(private = "file")
-_btns_update :: proc(hwnd: windows.HWND, btn: Mouse_Button, down_up: bool) {
-	if down_up {
-		windows.SetCapture(hwnd)
-	} else {
-		windows.ReleaseCapture()
+_update_btns :: proc(btn: Mouse_Button, down_up: bool) {
+	if _btns_this_frame[btn] != down_up {
+		_btns_this_frame[btn] = down_up
+
+		if down_up {
+			if _btns_down_cnt == 0 {
+				windows.SetCapture(_hwnd)
+			}
+			_btns_down_cnt += 1
+		} else {
+			_btns_down_cnt -= 1
+			if _btns_down_cnt <= 0 && windows.GetCapture() == _hwnd {
+				windows.ReleaseCapture()
+				_btns_down_cnt = 0
+			}
+		}
 	}
 
-	_btns_this_frame[btn] = down_up
-	state: Key_State = down_up ? .Pressed : .Released
+	append(
+		&_evnts_this_frame,
+		Event_Mouse_Button{state = down_up ? .Pressed : .Released, button = btn},
+	)
+}
 
-	append(&_evnts_this_frame, Event_Mouse_Button{state = state, button = btn})
+@(private = "file")
+_release_btns :: proc() {
+	for btn in Mouse_Button {
+		if _btns_this_frame[btn] {
+			_update_btns(btn, false)
+		}
+	}
+	_btns_down_cnt = 0
 }
 
 @(private = "file")

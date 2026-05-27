@@ -201,7 +201,7 @@ window_free :: proc() {
 @(private = "file")
 _WNDCLASS_NAME :: "WndClassName"
 
-@(private = "file")
+@(private)
 _hwnd: windows.HWND
 // @(private)
 // _hdc: windows.HDC
