@@ -20,10 +20,28 @@ mouse_is_released :: proc(btn: Mouse_Button) -> bool {
 	return !is_down && was_down
 }
 
+key_is_down :: proc(key: Key_Code) -> bool {
+	return _keys_this_frame[key]
+}
+key_is_pressed :: proc(key: Key_Code) -> bool {
+	was_down := _keys_prev_frame[key]
+	is_down := _keys_this_frame[key]
+	return is_down && !was_down
+}
+key_is_released :: proc(key: Key_Code) -> bool {
+	was_down := _keys_prev_frame[key]
+	is_down := _keys_this_frame[key]
+	return !is_down && was_down
+}
+
 poll_events_this_frame :: proc() -> []Event {
 	for it in Mouse_Button {
 		down_up := _btns_this_frame[it]
 		_btns_prev_frame[it] = down_up
+	}
+	for it in Key_Code {
+		down_up := _keys_this_frame[it]
+		_keys_prev_frame[it] = down_up
 	}
 	clear(&_evnts_this_frame)
 
@@ -143,39 +161,7 @@ _window_proc :: proc "system" (
 		}
 		fallthrough
 	case windows.WM_KEYUP, windows.WM_KEYDOWN:
-		was_down := (lparam & (1 << 30)) != 0
-		is_down := (lparam & (1 << 31)) == 0
-		is_repeat := is_down && was_down
-
-		keycode := _keycode_from_vkey(cast(u32)wparam)
-		keymod := _get_keymod()
-
-		// do we want this???
-		#partial switch keycode {
-		case .Ctrl:
-			keymod -= {.Ctrl}
-		case .Shift:
-			keymod -= {.Shift}
-		case .Alt:
-			keymod -= {.Alt}
-		case .Super:
-			keymod -= {.Super}
-		case .CapsLock:
-			keymod -= {.CapsLock}
-		case .NumLock:
-			keymod -= {.NumLock}
-		}
-
-		append(
-			&_evnts_this_frame,
-			Event_Key {
-				code      = keycode,
-				mod       = keymod,
-				state     = is_down ? .Pressed : .Released,
-				is_repeat = is_repeat,
-				// repeat_count = is_repeat ? lparam & 0xffff : 0,
-			},
-		)
+		_update_keys(wparam, lparam)
 
 	case windows.WM_SYSCHAR:
 		result = windows.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -236,9 +222,14 @@ _btns_prev_frame: [Mouse_Button]bool
 @(private = "file")
 _btns_this_frame: [Mouse_Button]bool
 @(private = "file")
-_evnts_this_frame: [dynamic]Event
-@(private = "file")
 _btns_down_cnt: int
+@(private = "file")
+_keys_prev_frame: [Key_Code]bool
+@(private = "file")
+_keys_this_frame: [Key_Code]bool
+@(private = "file")
+_evnts_this_frame: [dynamic]Event
+
 
 @(private = "file")
 _MOUSE_SCROLL_NORMVAL :: f32(120)
@@ -276,6 +267,47 @@ _release_btns :: proc() {
 		}
 	}
 	_btns_down_cnt = 0
+}
+
+@(private = "file")
+_update_keys :: proc(wparam: windows.WPARAM, lparam: windows.LPARAM) {
+	was_down := (lparam & (1 << 30)) != 0
+	is_down := (lparam & (1 << 31)) == 0
+	is_repeat := is_down && was_down
+
+	keycode := _keycode_from_vkey(cast(u32)wparam)
+	keymod := _get_keymod()
+
+	// do we want this???
+	#partial switch keycode {
+	case .Ctrl:
+		keymod -= {.Ctrl}
+	case .Shift:
+		keymod -= {.Shift}
+	case .Alt:
+		keymod -= {.Alt}
+	case .Super:
+		keymod -= {.Super}
+	case .CapsLock:
+		keymod -= {.CapsLock}
+	case .NumLock:
+		keymod -= {.NumLock}
+	}
+
+	if keycode != .Null {
+		_keys_this_frame[keycode] = is_down
+	}
+
+	append(
+		&_evnts_this_frame,
+		Event_Key {
+			code      = keycode,
+			mod       = keymod,
+			state     = is_down ? .Pressed : .Released,
+			is_repeat = is_repeat,
+			// repeat_count = is_repeat ? lparam & 0xffff : 0,
+		},
+	)
 }
 
 @(private = "file")
