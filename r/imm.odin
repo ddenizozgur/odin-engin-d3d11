@@ -140,10 +140,7 @@ imm_push_text :: proc(
 			continue
 		}
 
-		glyph, good := font.glyphs[char]
-		if !good {
-			glyph = font.glyphs['?']
-		}
+		glyph := font.glyphs[char] or_else font.glyphs['?']
 
 		// if glyph.atlasBounds.left == glyph.atlasBounds.right {
 		// cursor_x += glyph.advance * font_scale
@@ -201,10 +198,7 @@ text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 			continue
 		}
 
-		glyph, good := font.glyphs[char]
-		if !good {
-			glyph = font.glyphs['?']
-		}
+		glyph := font.glyphs[char] or_else font.glyphs['?']
 
 		cursor_x += glyph.advance * font_scale
 	}

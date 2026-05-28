@@ -107,6 +107,7 @@ _window_proc :: proc "system" (
 	case windows.WM_KILLFOCUS:
 		append(&_evnts_this_frame, Event_Window_UnFocus{})
 		_release_btns()
+		_release_keys()
 
 	case windows.WM_INPUT: // TODO: rawinput
 	case windows.WM_PAINT:
@@ -223,13 +224,14 @@ _btns_prev_frame: [Mouse_Button]bool
 _btns_this_frame: [Mouse_Button]bool
 @(private = "file")
 _btns_down_cnt: int
+
 @(private = "file")
 _keys_prev_frame: [Key_Code]bool
 @(private = "file")
 _keys_this_frame: [Key_Code]bool
+
 @(private = "file")
 _evnts_this_frame: [dynamic]Event
-
 
 @(private = "file")
 _MOUSE_SCROLL_NORMVAL :: f32(120)
@@ -308,6 +310,19 @@ _update_keys :: proc(wparam: windows.WPARAM, lparam: windows.LPARAM) {
 			// repeat_count = is_repeat ? lparam & 0xffff : 0,
 		},
 	)
+}
+
+@(private = "file")
+_release_keys :: proc() {
+	for key in Key_Code {
+		if _keys_this_frame[key] {
+			_keys_this_frame[key] = false
+			append(
+				&_evnts_this_frame,
+				Event_Key{code = key, mod = {}, state = .Released, is_repeat = false},
+			)
+		}
+	}
 }
 
 @(private = "file")

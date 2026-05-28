@@ -106,9 +106,6 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 		return false
 	}
 
-	// float doubleClickTime = GetDoubleClickTime() / static_cast<float>(Thousand(1));
-	// float caretBlinkTime  = GetCaretBlinkTime() / static_cast<float>(Thousand(1));
-
 	// TODO: check https://stackoverflow.com/q/63096226 and here: https://stackoverflow.com/q/53000291
 	// WS_EX_NOREDIRECTIONBITMAP flag here is needed to fix ugly bug with Windows 10
 	// when window is resized and DXGI swap chain uses FLIP presentation model

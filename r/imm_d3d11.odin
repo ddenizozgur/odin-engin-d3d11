@@ -342,7 +342,7 @@ float4 ps_main(vs_out input) : SV_TARGET {
   float4 out_color = input.color * tex_color;
   out_color.a *= alpha;
 
-  // May broke video compression algos
+  // TODO: check for video compression algos
   float noise = gradient_noise(input.sv_pos.xy);
   noise = (noise - 0.5) / 255.0;
   out_color.rgb += noise;

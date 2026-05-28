@@ -148,8 +148,7 @@ d3d11_load :: proc() -> bool {
 		}
 	}
 
-	// Render Target
-	{
+	{ 	// Render Target
 		// desc := D3D11.RENDER_TARGET_VIEW_DESC {
 		// 	Format = .R8G8B8A8_UNORM_SRGB,
 		// 	ViewDimension = .TEXTURE2D
