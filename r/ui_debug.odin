@@ -1,23 +1,97 @@
 package r
 
-UI_Size_Kind :: enum {
-	// HardCoded,
-	TextContent,
-	// ParentPercent,
-	ChildrenSum,
+import "../wm"
+
+ui_button :: proc(text: string, pref_size := UI_Size_TextContent{0, 0}) -> (action: UI_Action) {
+	mouse := cast([2]f32)wm.get_mouse_pos()
+
+	w := ui_build_widget(text, {.DrawText, .DrawBg, .Clickable}, pref_size)
+
+	action.hovered = point_within_rect(mouse, w.final_pos, w.final_size)
+	action.clicked = action.hovered && wm.mouse_is_released(.Left)
+
+	return action
 }
 
-UI_Widget_Flag :: enum {}
-UI_Widget_Flags :: bit_set[UI_Widget_Flag]
-
-UI_Widget :: struct {
-	parent_rel_pos: [2]f32,
-	size_kind:      UI_Size_Kind,
-	size:           [2]f32,
+ui_panel :: proc(pref_size := UI_Size_ChildrenSum{0, 0}) -> ^UI_Widget {
+	return ui_build_widget("", {.DrawBg, .DrawBorder}, pref_size)
 }
 
-ui_make_widget :: proc(text: string, pos: [2]f32) {
+ui_to_test :: proc() {
+	UI_FRAME_SCOPED()
+
+	{
+		UI_PARENT_SCOPED(ui_panel())
+
+		ui_button("Kralsın")
+		ui_button("Kralsın2")
+		ui_button("Kralsın3")
+	}
+
+	{
+		UI_PARENT_SCOPED(ui_panel())
+
+		for i in 0 ..< 6 {
+			ui_button("Kralsın")
+		}
+
+		{
+			UI_PARENT_SCOPED(ui_panel())
+
+			for i in 0 ..< 3 {
+				ui_button("Merhabaysin")
+			}
+		}
+	}
+
 }
+
+/*
+ui_make_widget :: proc(
+	text: string,
+	pos: [2]f32,
+	font_size: f32,
+	flags: UI_Widget_Flags,
+) -> (
+	action: UI_Action,
+) {
+	bbox := text_bbox(font, text, font_size)
+	mouse_pos := cast([2]f32)wm.get_mouse_pos()
+
+	bbox_rect := bbox + UI_PADDING * 2
+	text_pos := pos + UI_PADDING
+
+	action.hovered = point_within_rect(mouse_pos, pos, bbox_rect)
+	action.clicked = .Clickable in flags && action.hovered && wm.mouse_is_released(.Left)
+	pressed := action.hovered && wm.mouse_is_down(.Left)
+
+	if .DrawBg in flags {
+		tcol := UI_DARK_GRAY
+		bcol := UI_DARK_GRAY
+
+		if .Clickable in flags {
+			if pressed {
+				tcol = UI_DARKER_GRAY
+				bcol = UI_DARKER_GRAY
+			} else if action.hovered {
+				tcol = UI_LIGHT_GRAY
+				bcol = UI_DARK_GRAY
+			}
+		} else {
+			tcol = UI_DARKER_GRAY
+			bcol = UI_DARKER_GRAY
+		}
+
+		imm_push_rect(pos, bbox_rect, {tcol, tcol, bcol, bcol}, UI_CRADII)
+	}
+
+	if .DrawText in flags {
+		imm_push_text(font, text, text_pos, font_size, UI_ALMOST_WHITE)
+	}
+
+	return action
+}
+*/
 
 /*
 ui_widget_base :: proc(text: string, pos: [2]f32, flags: UI_Widget_Flags) -> UI_Action {

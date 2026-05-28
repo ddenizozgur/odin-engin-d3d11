@@ -25,6 +25,8 @@ to_init :: proc() -> bool {
 		varela = r.msdf_load_from_file(json_path, png_path) or_return
 	}
 
+	r.ui_init(varela)
+
 	return true
 }
 
@@ -35,23 +37,22 @@ to_r :: proc(dt: f32) {
 	client_size := cast([2]f32)wm.get_client_size()
 	mouse_pos := cast([2]f32)wm.get_mouse_pos()
 
-	r.d3d11_clear_default_rtv(r.NAYSAYER_BG)
-	defer r.d3d11_present()
-
 	{
 		r.IMM_FRAME_SCOPED()
+
+		r.d3d11_clear_default_rtv(r.NAYSAYER_BG)
 
 		some_bg(et)
 		// liq_neon(et)
 
-		if wm.key_is_down(.A) {
-			draw_some_text(varela, 0, math.sin_f32(et) * 0.5 + 1)
-		}
-
 		// r.imm_push_rect(mouse_pos, {120, 120}, r.BLUE)
+
+		r.ui_to_test()
 
 		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
 	}
+
+	r.d3d11_present()
 }
 
 main :: proc() {

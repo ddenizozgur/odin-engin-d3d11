@@ -89,7 +89,7 @@ imm_d3d11_bind_scissor :: proc(rect: D3D11.RECT) {
 imm_d3d11_load :: proc() -> bool {
 	{ 	// Batch Buffer
 		desc := D3D11.BUFFER_DESC {
-			ByteWidth      = _BATCH_BYTES,
+			ByteWidth      = _BATCH_MAX_BYTES,
 			Usage          = .DYNAMIC,
 			BindFlags      = {.VERTEX_BUFFER},
 			CPUAccessFlags = {.WRITE},

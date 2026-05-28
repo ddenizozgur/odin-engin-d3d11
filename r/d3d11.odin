@@ -10,8 +10,8 @@ import DXGI "vendor:directx/dxgi"
 import "../wm"
 
 Sampler_Kind :: enum {
-	PointClamp,
 	BilinearClamp,
+	PointClamp,
 }
 
 Depth_Kind :: enum {
@@ -235,7 +235,7 @@ _d3d11_create_device_and_ctx :: proc(
 		)
 
 		if windows.FAILED(hr) {
-			fmt.eprintfln("[ERROR] D3D11 base device creation failed")
+			fmt.eprintfln("[ERROR] Failed to create D3D11 device")
 			return false
 		}
 	}

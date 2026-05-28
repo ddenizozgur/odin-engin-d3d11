@@ -82,7 +82,9 @@ d3d11_tex2d_alloc_ex :: proc(
 	tex.size = size
 
 	d3d_tex: ^D3D11.ITexture2D
-	defer d3d_tex->Release()
+	defer if d3d_tex != nil {
+		d3d_tex->Release()
+	}
 
 	dxgi_fmt, bytes_per_texel := d3d11_dxgi_fmt_from_tex2d(tex2d_fmt)
 	{
