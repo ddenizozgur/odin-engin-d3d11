@@ -2,48 +2,60 @@
 package wm
 
 import "base:runtime"
+import "core:container/intrusive/list"
 import "core:sys/windows"
 import "core:unicode"
 import "core:unicode/utf16"
 
-mouse_is_down :: proc(btn: Mouse_Button) -> bool {
-	return _btns_this_frame[btn]
+get_client_size :: proc(window: ^Window) -> ([2]i32, bool) {
+	return window.size_this_frame, window.is_resized
 }
-mouse_is_pressed :: proc(btn: Mouse_Button) -> bool {
-	was_down := _btns_prev_frame[btn]
-	is_down := _btns_this_frame[btn]
+get_client_size_2f32 :: proc(window: ^Window) -> ([2]f32, bool) {
+	return cast([2]f32)window.size_this_frame, window.is_resized
+}
+
+mouse_is_down :: proc(window: ^Window, btn: Mouse_Btn) -> bool {
+	return window.btns_this_frame[btn]
+}
+mouse_is_pressed :: proc(window: ^Window, btn: Mouse_Btn) -> bool {
+	was_down := window.btns_last_frame[btn]
+	is_down := window.btns_this_frame[btn]
 	return is_down && !was_down
 }
-mouse_is_released :: proc(btn: Mouse_Button) -> bool {
-	was_down := _btns_prev_frame[btn]
-	is_down := _btns_this_frame[btn]
+mouse_is_released :: proc(window: ^Window, btn: Mouse_Btn) -> bool {
+	was_down := window.btns_last_frame[btn]
+	is_down := window.btns_this_frame[btn]
 	return !is_down && was_down
 }
 
-key_is_down :: proc(key: Key_Code) -> bool {
-	return _keys_this_frame[key]
+key_is_down :: proc(window: ^Window, key: Key_VkCode) -> bool {
+	return window.keys_this_frame[key]
 }
-key_is_pressed :: proc(key: Key_Code) -> bool {
-	was_down := _keys_prev_frame[key]
-	is_down := _keys_this_frame[key]
+key_is_pressed :: proc(window: ^Window, key: Key_VkCode) -> bool {
+	was_down := window.keys_last_frame[key]
+	is_down := window.keys_this_frame[key]
 	return is_down && !was_down
 }
-key_is_released :: proc(key: Key_Code) -> bool {
-	was_down := _keys_prev_frame[key]
-	is_down := _keys_this_frame[key]
+key_is_released :: proc(window: ^Window, key: Key_VkCode) -> bool {
+	was_down := window.keys_last_frame[key]
+	is_down := window.keys_this_frame[key]
 	return !is_down && was_down
 }
 
 poll_events_this_frame :: proc() -> []Event {
-	for it in Mouse_Button {
-		down_up := _btns_this_frame[it]
-		_btns_prev_frame[it] = down_up
+	wnd_it := list.iterator_head(_perm.window_list, Window, "node_link")
+	for wnd_it in list.iterate_next(&wnd_it) {
+		for it in Mouse_Btn {
+			down_up := wnd_it.btns_this_frame[it]
+			wnd_it.btns_last_frame[it] = down_up
+		}
+		for it in Key_VkCode {
+			down_up := wnd_it.keys_this_frame[it]
+			wnd_it.keys_last_frame[it] = down_up
+		}
+		wnd_it.is_resized = false
 	}
-	for it in Key_Code {
-		down_up := _keys_this_frame[it]
-		_keys_prev_frame[it] = down_up
-	}
-	clear(&_evnts_this_frame)
+	clear(&_perm.evnts_this_frame)
 
 	msg: windows.MSG
 	for windows.PeekMessageW(&msg, nil, 0, 0, windows.PM_REMOVE) {
@@ -51,12 +63,9 @@ poll_events_this_frame :: proc() -> []Event {
 		windows.DispatchMessageW(&msg)
 	}
 
-	return _evnts_this_frame[:]
+	return _perm.evnts_this_frame[:]
 }
 
-//
-// Private
-//
 @(private)
 _window_proc :: proc "system" (
 	hwnd: windows.HWND,
@@ -66,12 +75,16 @@ _window_proc :: proc "system" (
 ) -> windows.LRESULT {
 	context = runtime.default_context()
 
-	result: windows.LRESULT = 0
+	result := windows.LRESULT(0)
+	window := _find_window_from_hwnd(hwnd)
+	if window == nil {
+		return windows.DefWindowProcW(hwnd, msg, wparam, lparam)
+	}
 
 	switch msg {
 	// case windows.WM_DESTROY:
 	case windows.WM_CLOSE:
-		append(&_evnts_this_frame, Event_Window_Close{})
+		append(&_perm.evnts_this_frame, Event_WindowClose{window})
 
 	// TODO: WM_INPUTLANGCHANGE ??
 	// case windows.WM_ENTERSIZEMOVE:
@@ -82,87 +95,74 @@ _window_proc :: proc "system" (
 	// 	result = 1
 
 	case windows.WM_SIZE:
-		@(static) prev_placement: enum {
-			Restore,
-			Minimize,
-			Maximize,
-		}
-
-		switch wparam {
-		case windows.SIZE_MINIMIZED:
-			append(&_evnts_this_frame, Event_Window_Minimize{})
-			prev_placement = .Minimize
-		case windows.SIZE_MAXIMIZED:
-			append(&_evnts_this_frame, Event_Window_Maximize{})
-			prev_placement = .Maximize
-		case windows.SIZE_RESTORED:
-			if prev_placement != .Restore {
-				append(&_evnts_this_frame, Event_Window_Restore{})
-				prev_placement = .Restore
-			}
-		}
-
+		_on_resize(window, wparam, lparam)
 	case windows.WM_SETFOCUS:
-		append(&_evnts_this_frame, Event_Window_Focus{})
+		append(&_perm.evnts_this_frame, Event_WindowFocus{window})
 	case windows.WM_KILLFOCUS:
-		append(&_evnts_this_frame, Event_Window_UnFocus{})
-		_release_btns()
-		_release_keys()
+		append(&_perm.evnts_this_frame, Event_WindowUnfocus{window})
+		_release_btns(window)
+		_release_keys(window)
 
-	case windows.WM_INPUT: // TODO: rawinput
+	// case windows.WM_INPUT: // TODO: rawinput
 	case windows.WM_PAINT:
 		ps: windows.PAINTSTRUCT
-		hdc := windows.BeginPaint(hwnd, &ps)
+		_ = windows.BeginPaint(hwnd, &ps)
 		// do NOTHING here...
 		windows.EndPaint(hwnd, &ps)
 	// DwmFlush();
 
 	case windows.WM_LBUTTONUP:
-		_update_btns(.Left, false)
+		_update_btns(window, .Left, false)
 	case windows.WM_LBUTTONDOWN:
-		_update_btns(.Left, true)
+		_update_btns(window, .Left, true)
 	case windows.WM_MBUTTONUP:
-		_update_btns(.Middle, false)
+		_update_btns(window, .Middle, false)
 	case windows.WM_MBUTTONDOWN:
-		_update_btns(.Middle, true)
+		_update_btns(window, .Middle, true)
 	case windows.WM_RBUTTONUP:
-		_update_btns(.Right, false)
+		_update_btns(window, .Right, false)
 	case windows.WM_RBUTTONDOWN:
-		_update_btns(.Right, true)
+		_update_btns(window, .Right, true)
 	case windows.WM_XBUTTONUP:
-		_update_btns(windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, false)
+		_update_btns(window, windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, false)
 		// https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-xbuttondown
 		// Unlike the WM_LBUTTONDOWN, WM_MBUTTONDOWN, and WM_RBUTTONDOWN messages,
 		// an application should return TRUE from this message if it processes it
 		result = 1
 	case windows.WM_XBUTTONDOWN:
-		_update_btns(windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, true)
+		_update_btns(window, windows.HIWORD(wparam) == 1 ? .XButton1 : .XButton2, true)
 		result = 1
 
 	case windows.WM_MOUSEMOVE:
 		x := windows.GET_X_LPARAM(lparam)
 		y := windows.GET_Y_LPARAM(lparam)
-		append(&_evnts_this_frame, Event_Mouse_Move{x, y})
+		append(&_perm.evnts_this_frame, Event_MouseMove{window = window, pos = {x, y}})
 
 	case windows.WM_MOUSEWHEEL:
 		vert_scroll := cast(f32)windows.GET_WHEEL_DELTA_WPARAM(wparam) / _MOUSE_SCROLL_NORMVAL // TODO: check sign
-		append(&_evnts_this_frame, Event_Mouse_Scroll{0., vert_scroll})
+		append(
+			&_perm.evnts_this_frame,
+			Event_MouseScroll{window = window, scroll = {0., vert_scroll}},
+		)
 	case windows.WM_MOUSEHWHEEL:
 		horz_scroll := cast(f32)windows.GET_WHEEL_DELTA_WPARAM(wparam) / _MOUSE_SCROLL_NORMVAL // TODO: check sign
-		append(&_evnts_this_frame, Event_Mouse_Scroll{horz_scroll, 0.})
+		append(
+			&_perm.evnts_this_frame,
+			Event_MouseScroll{window = window, scroll = {horz_scroll, 0.}},
+		)
 
-	case windows.WM_SYSKEYUP, windows.WM_SYSKEYDOWN:
+	case windows.WM_SYSKEYDOWN:
 		if wparam == windows.VK_F4 {
 			// return windows.DefWindowProcW(hwnd, msg, wparam, lparam)
-			append(&_evnts_this_frame, Event_Window_Close{})
+			append(&_perm.evnts_this_frame, Event_WindowClose{window})
 			break
 		}
 		if wparam != windows.VK_MENU && (wparam < windows.VK_F1 || wparam > windows.VK_F24) {
 			result = windows.DefWindowProcW(hwnd, msg, wparam, lparam)
 		}
 		fallthrough
-	case windows.WM_KEYUP, windows.WM_KEYDOWN:
-		_update_keys(wparam, lparam)
+	case windows.WM_SYSKEYUP, windows.WM_KEYUP, windows.WM_KEYDOWN:
+		_update_keys(window, wparam, lparam)
 
 	case windows.WM_SYSCHAR:
 		result = windows.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -195,7 +195,7 @@ _window_proc :: proc "system" (
 		}
 
 		if unicode.is_graphic(codepoint) {
-			append(&_evnts_this_frame, cast(Event_Text)codepoint)
+			append(&_perm.evnts_this_frame, Event_Text{window = window, utf32 = codepoint})
 		}
 
 	case windows.WM_ERASEBKGND:
@@ -215,97 +215,78 @@ _window_proc :: proc "system" (
 // 	return .Mouse
 // }
 
-// const bool swapped = (TRUE == GetSystemMetrics(SM_SWAPBUTTON));
-// check for swapped mouse buttons???
-// TODO: check for swapped mouse buttons???
-@(private = "file")
-_btns_prev_frame: [Mouse_Button]bool
-@(private = "file")
-_btns_this_frame: [Mouse_Button]bool
-@(private = "file")
-_btns_down_cnt: int
-
-@(private = "file")
-_keys_prev_frame: [Key_Code]bool
-@(private = "file")
-_keys_this_frame: [Key_Code]bool
-
-@(private = "file")
-_evnts_this_frame: [dynamic]Event
-
+// ?? const bool swapped = (TRUE == GetSystemMetrics(SM_SWAPBUTTON));
 @(private = "file")
 _MOUSE_SCROLL_NORMVAL :: f32(120)
 
 @(private = "file")
-_update_btns :: proc(btn: Mouse_Button, down_up: bool) {
-	if _btns_this_frame[btn] != down_up {
-		_btns_this_frame[btn] = down_up
+_update_btns :: proc(window: ^Window, btn: Mouse_Btn, down_up: bool) {
+	if window.btns_this_frame[btn] != down_up {
+		window.btns_this_frame[btn] = down_up
 
 		if down_up {
-			if _btns_down_cnt == 0 {
-				windows.SetCapture(_hwnd)
+			if window.btns_down_cnt == 0 {
+				windows.SetCapture(window.hwnd)
 			}
-			_btns_down_cnt += 1
+			window.btns_down_cnt += 1
 		} else {
-			_btns_down_cnt -= 1
-			if _btns_down_cnt <= 0 && windows.GetCapture() == _hwnd {
+			window.btns_down_cnt -= 1
+			if window.btns_down_cnt <= 0 && windows.GetCapture() == window.hwnd {
 				windows.ReleaseCapture()
-				_btns_down_cnt = 0
+				window.btns_down_cnt = 0
 			}
 		}
 	}
 
-	append(
-		&_evnts_this_frame,
-		Event_Mouse_Button{state = down_up ? .Pressed : .Released, button = btn},
-	)
+	append(&_perm.evnts_this_frame, Event_MouseBtn{window = window, btn = btn, down_up = down_up})
 }
 
 @(private = "file")
-_release_btns :: proc() {
-	for btn in Mouse_Button {
-		if _btns_this_frame[btn] {
-			_update_btns(btn, false)
+_release_btns :: proc(window: ^Window) {
+	for btn in Mouse_Btn {
+		if window.btns_this_frame[btn] {
+			_update_btns(window, btn, false)
 		}
 	}
-	_btns_down_cnt = 0
+	window.btns_down_cnt = 0
 }
 
 @(private = "file")
-_update_keys :: proc(wparam: windows.WPARAM, lparam: windows.LPARAM) {
+_update_keys :: proc(window: ^Window, wparam: windows.WPARAM, lparam: windows.LPARAM) {
 	was_down := (lparam & (1 << 30)) != 0
 	is_down := (lparam & (1 << 31)) == 0
 	is_repeat := is_down && was_down
 
-	keycode := _keycode_from_vkey(cast(u32)wparam)
-	keymod := _get_keymod()
+	vkcode := _vkcode_from_vk(cast(u32)wparam)
+	keymods := _get_keymods()
 
 	// do we want this???
-	#partial switch keycode {
+	#partial switch vkcode {
 	case .Ctrl:
-		keymod -= {.Ctrl}
+		keymods -= {.Ctrl}
 	case .Shift:
-		keymod -= {.Shift}
+		keymods -= {.Shift}
 	case .Alt:
-		keymod -= {.Alt}
+		keymods -= {.Alt}
 	case .Super:
-		keymod -= {.Super}
+		keymods -= {.Super}
 	case .CapsLock:
-		keymod -= {.CapsLock}
+		keymods -= {.CapsLock}
 	case .NumLock:
-		keymod -= {.NumLock}
+		keymods -= {.NumLock}
 	}
 
-	if keycode != .Null {
-		_keys_this_frame[keycode] = is_down
+	if vkcode != .Null {
+		window.keys_this_frame[vkcode] = is_down
 	}
 
 	append(
-		&_evnts_this_frame,
+		&_perm.evnts_this_frame,
 		Event_Key {
-			code      = keycode,
-			mod       = keymod,
-			state     = is_down ? .Pressed : .Released,
+			window    = window,
+			vkcode    = vkcode,
+			mods      = keymods,
+			down_up   = is_down,
 			is_repeat = is_repeat,
 			// repeat_count = is_repeat ? lparam & 0xffff : 0,
 		},
@@ -313,20 +294,26 @@ _update_keys :: proc(wparam: windows.WPARAM, lparam: windows.LPARAM) {
 }
 
 @(private = "file")
-_release_keys :: proc() {
-	for key in Key_Code {
-		if _keys_this_frame[key] {
-			_keys_this_frame[key] = false
+_release_keys :: proc(window: ^Window) {
+	for vkcode in Key_VkCode {
+		if window.keys_this_frame[vkcode] {
+			window.keys_this_frame[vkcode] = false
 			append(
-				&_evnts_this_frame,
-				Event_Key{code = key, mod = {}, state = .Released, is_repeat = false},
+				&_perm.evnts_this_frame,
+				Event_Key {
+					window = window,
+					vkcode = vkcode,
+					mods = {},
+					down_up = false,
+					is_repeat = false,
+				},
 			)
 		}
 	}
 }
 
 @(private = "file")
-_get_keymod :: proc() -> (mod: Key_Modifiers) {
+_get_keymods :: proc() -> (mod: Key_Mods) {
 	if cast(u16)windows.GetKeyState(windows.VK_SHIFT) & 0x8000 != 0 do mod += {.Shift}
 	if cast(u16)windows.GetKeyState(windows.VK_CONTROL) & 0x8000 != 0 do mod += {.Ctrl}
 	if cast(u16)windows.GetKeyState(windows.VK_MENU) & 0x8000 != 0 do mod += {.Alt}
@@ -342,8 +329,32 @@ _get_keymod :: proc() -> (mod: Key_Modifiers) {
 }
 
 @(private = "file")
-_keycode_from_vkey :: proc(vkey: u32) -> Key_Code {
-	switch vkey {
+_on_resize :: proc(window: ^Window, wparam: windows.WPARAM, lparam: windows.LPARAM) {
+	window.size_this_frame.x = cast(i32)windows.LOWORD(lparam)
+	window.size_this_frame.y = cast(i32)windows.HIWORD(lparam)
+	if window.size_this_frame != window.size_last_frame {
+		window.is_resized = true
+		window.size_last_frame = window.size_this_frame
+	}
+
+	switch wparam {
+	case windows.SIZE_MINIMIZED:
+		append(&_perm.evnts_this_frame, Event_WindowMinimize{window})
+		window.placement_last_frame = .Minimize
+	case windows.SIZE_MAXIMIZED:
+		append(&_perm.evnts_this_frame, Event_WindowMaximize{window})
+		window.placement_last_frame = .Maximize
+	case windows.SIZE_RESTORED:
+		if window.placement_last_frame != .Restore {
+			append(&_perm.evnts_this_frame, Event_WindowRestore{window})
+			window.placement_last_frame = .Restore
+		}
+	}
+}
+
+@(private = "file")
+_vkcode_from_vk :: proc(vk: u32) -> Key_VkCode {
+	switch vk {
 	case 'A':
 		return .A
 	case 'B':
@@ -397,11 +408,11 @@ _keycode_from_vkey :: proc(vkey: u32) -> Key_Code {
 	case 'Z':
 		return .Z
 	case '0' ..= '9':
-		return ._0 + cast(Key_Code)(vkey - '0')
+		return ._0 + cast(Key_VkCode)(vk - '0')
 	case windows.VK_NUMPAD0 ..= windows.VK_NUMPAD9:
-		return .Num0 + cast(Key_Code)(vkey - windows.VK_NUMPAD0)
+		return .Num0 + cast(Key_VkCode)(vk - windows.VK_NUMPAD0)
 	case windows.VK_F1 ..= windows.VK_F24:
-		return .F1 + cast(Key_Code)(vkey - windows.VK_F1)
+		return .F1 + cast(Key_VkCode)(vk - windows.VK_F1)
 	case windows.VK_SPACE:
 		return .Space
 	case windows.VK_OEM_3:
@@ -490,18 +501,18 @@ _keycode_from_vkey :: proc(vkey: u32) -> Key_Code {
 }
 
 @(private = "file")
-_vkey_from_keycode :: proc(keycode: Key_Code) -> u32 {
-	switch keycode {
+_vk_from_vkcode :: proc(vkcode: Key_VkCode) -> u32 {
+	switch vkcode {
 	case .Null:
 		return 0
 	case .Esc:
 		return windows.VK_ESCAPE
 	case .F1 ..= .F24:
-		return cast(u32)windows.VK_F1 + cast(u32)(keycode - .F1)
+		return cast(u32)windows.VK_F1 + cast(u32)(vkcode - .F1)
 	case .Backtick:
 		return windows.VK_OEM_3
 	case ._0 ..= ._9:
-		return cast(u32)'0' + cast(u32)(keycode - ._0)
+		return cast(u32)'0' + cast(u32)(vkcode - ._0)
 	case .Minus:
 		return windows.VK_OEM_MINUS
 	case .Equal:
@@ -633,7 +644,7 @@ _vkey_from_keycode :: proc(keycode: Key_Code) -> u32 {
 	case .NumPeriod:
 		return windows.VK_DECIMAL
 	case .Num0 ..= .Num9:
-		return cast(u32)windows.VK_NUMPAD0 + cast(u32)(keycode - .Num0)
+		return cast(u32)windows.VK_NUMPAD0 + cast(u32)(vkcode - .Num0)
 	}
 	return 0
 }

@@ -2,109 +2,102 @@
 package wm
 
 import "base:runtime"
+import "core:container/intrusive/list"
 import "core:fmt"
 import "core:sys/windows"
 
-//
-// Window
-//
-get_hwnd :: proc() -> windows.HWND {return _hwnd}
-
-get_dpi_scale :: proc() -> f32 {
-	dpi := windows.GetDpiForWindow(_hwnd)
+get_dpi_scale :: proc(window: ^Window) -> f32 {
+	dpi := windows.GetDpiForWindow(window.hwnd)
 	return cast(f32)dpi / 96.
 }
 
-get_client_size :: proc() -> [2]i32 {
-	res: [2]i32
-	r: windows.RECT
-	windows.GetClientRect(_hwnd, &r)
-	res.x = r.right - r.left
-	res.y = r.bottom - r.top
-	return res
-}
-
-get_mouse_pos :: proc() -> [2]i32 {
-	// TODO: check for focused or not ???
-	// impl dpi awareness
+get_mouse_pos :: proc(window: ^Window) -> [2]i32 {
+	// check for focused or not ???
+	// TODO: impl dpi awareness
 	v: [2]i32
 	p: windows.POINT
 	if (windows.GetCursorPos(&p)) {
-		windows.ScreenToClient(_hwnd, &p)
-		v.x = p.x
-		v.y = p.y
+		windows.ScreenToClient(window.hwnd, &p)
+		v.x, v.y = p.x, p.y
 	}
 	return v
 }
+get_mouse_pos_2f32 :: proc(window: ^Window) -> [2]f32 {
+	return cast([2]f32)get_mouse_pos(window)
+}
 
-window_set_title :: proc(title: string) {
+window_set_title :: proc(window: ^Window, title: string) {
 	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
 	title16 := windows.utf8_to_wstring(title, context.temp_allocator)
-	windows.SetWindowTextW(_hwnd, title16)
+	windows.SetWindowTextW(window.hwnd, title16)
 }
 
-window_set_focus :: proc() {
-	windows.SetForegroundWindow(_hwnd)
-	windows.SetFocus(_hwnd)
+window_set_focus :: proc(window: ^Window) {
+	windows.SetForegroundWindow(window.hwnd)
+	windows.SetFocus(window.hwnd)
 }
 
 // TODO: check??
-window_minimize :: proc() {windows.ShowWindow(_hwnd, windows.SW_MINIMIZE)}
-window_maximize :: proc() {windows.ShowWindow(_hwnd, windows.SW_MAXIMIZE)}
-window_restore :: proc() {windows.ShowWindow(_hwnd, windows.SW_RESTORE)}
+window_minimize :: proc(window: ^Window) {windows.ShowWindow(window.hwnd, windows.SW_MINIMIZE)}
+window_maximize :: proc(window: ^Window) {windows.ShowWindow(window.hwnd, windows.SW_MAXIMIZE)}
+window_restore :: proc(window: ^Window) {windows.ShowWindow(window.hwnd, windows.SW_RESTORE)}
 
-window_is_minimized :: proc() -> bool {return cast(bool)windows.IsIconic(_hwnd)}
-window_is_maximized :: proc() -> bool {return cast(bool)windows.IsZoomed(_hwnd)}
-
-window_is_focused :: proc() -> bool {
-	active := windows.GetActiveWindow()
-	return active == _hwnd
+window_is_minimized :: proc(window: ^Window) -> bool {
+	return cast(bool)windows.IsIconic(window.hwnd)
+}
+window_is_maximized :: proc(window: ^Window) -> bool {
+	return cast(bool)windows.IsZoomed(window.hwnd)
 }
 
-window_is_fullscreen :: proc() -> bool {
-	style := windows.GetWindowLongW(_hwnd, windows.GWL_STYLE)
+window_is_focused :: proc(window: ^Window) -> bool {
+	active := windows.GetActiveWindow()
+	return active == window.hwnd
+}
+
+window_is_fullscreen :: proc(window: ^Window) -> bool {
+	style := windows.GetWindowLongW(window.hwnd, windows.GWL_STYLE)
 	return (cast(u32)style & windows.WS_OVERLAPPEDWINDOW) == 0
 }
 
-Window_Style :: enum {
-	Windowed,
-	FullScreen,
-	// Secondary,
-}
-
-window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed) -> bool {
-	// expects user to pass client size
-
-	if (_hwnd != nil) {
-		assert(false, "[ASSERT] Window already initialized")
-		return false
-	}
-
+initialize :: proc() -> bool {
 	// startup_info : windows.STARTUPINFOW
 	// windows.GetStartupInfoW(&startup_info)
 
-	hinst := cast(windows.HINSTANCE)windows.GetModuleHandleW(nil)
-	hicon := windows.LoadIconW(hinst, cast(windows.LPCWSTR)windows.MAKEINTRESOURCEW(2)) // RESOURCE_ID_FIRST_ICON
+	// hicon := windows.LoadIconW(hinst, cast(windows.LPCWSTR)windows.MAKEINTRESOURCEW(2)) // RESOURCE_ID_FIRST_ICON
 	// if (!hIcon) {
 	//     exe_path: [MAX_PATH]u16;
 	//     GetModuleFileNameW(null, exe_path.data, MAX_PATH);
 	//     icon = ExtractIconW(hInstance, exe_path.data, 0); // 0 means first icon.
 	// }
 
-	wnd_class: windows.WNDCLASSW = {
+	_perm.wndclass = windows.WNDCLASSW {
 		lpfnWndProc   = _window_proc,
 		style         = windows.CS_VREDRAW | windows.CS_HREDRAW | windows.CS_OWNDC,
-		hInstance     = hinst,
-		hIcon         = hicon,
+		hInstance     = cast(windows.HINSTANCE)windows.GetModuleHandleW(nil),
+		hIcon         = windows.LoadIconA(nil, windows.IDI_APPLICATION),
 		hCursor       = windows.LoadCursorA(nil, windows.IDC_ARROW),
 		hbrBackground = cast(windows.HBRUSH)windows.GetStockObject(windows.WHITE_BRUSH), // This param doesnt matter since we provide WS_EX_NOREDIRECTIONBITMAP
-		lpszClassName = _WNDCLASS_NAME,
+		lpszClassName = "WndClassName",
 	}
-	if windows.RegisterClassW(&wnd_class) == 0 {
-		fmt.eprintfln("[ERROR] WndClass registration failed") // TODO: maybe GetLastError()
+
+	if windows.RegisterClassW(&_perm.wndclass) == 0 {
+		fmt.eprintfln("[ERROR] Failed to registrate WNDCLASSW") // TODO: maybe GetLastError()
 		return false
 	}
+
+	return true
+}
+
+window_alloc :: proc(
+	title: string,
+	size: [2]i32,
+	style := Window_Style.Windowed,
+) -> (
+	window: ^Window,
+	good: bool,
+) {
+	// expects user to pass client size
 
 	// TODO: check https://stackoverflow.com/q/63096226 and here: https://stackoverflow.com/q/53000291
 	// WS_EX_NOREDIRECTIONBITMAP flag here is needed to fix ugly bug with Windows 10
@@ -117,8 +110,8 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 	xpos := windows.CW_USEDEFAULT
 	ypos := windows.CW_USEDEFAULT
 	window_rect: windows.RECT = {
-		right  = cast(i32)size.x,
-		bottom = cast(i32)size.y,
+		right  = size.x,
+		bottom = size.y,
 	}
 
 	switch style {
@@ -150,9 +143,9 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 		title16 := windows.utf8_to_wstring(title, context.temp_allocator)
 
-		_hwnd = windows.CreateWindowExW(
+		hwnd := windows.CreateWindowExW(
 			ex_style,
-			_WNDCLASS_NAME,
+			_perm.wndclass.lpszClassName,
 			title16,
 			dw_style,
 			xpos,
@@ -161,44 +154,66 @@ window_init :: proc(title: string, size: [2]i32, style := Window_Style.Windowed)
 			window_h,
 			nil,
 			nil,
-			hinst,
+			_perm.wndclass.hInstance,
 			nil,
 		)
-		// DragAcceptFiles(hwnd, TRUE);
+		// DragAcceptFiles(_hwnd, TRUE);
+		if (hwnd == nil) {
+			fmt.eprintfln("[ERROR] Failed to create HWND")
+			return
+		}
+
+		{
+			r: windows.RECT
+			windows.GetClientRect(hwnd, &r)
+			client_w := r.right - r.left
+			client_h := r.bottom - r.top
+
+			window = new_clone(
+				Window {
+					hwnd = hwnd,
+					size_this_frame = {client_w, client_h},
+					size_last_frame = {client_w, client_h},
+				},
+			)
+			list.push_back(&_perm.window_list, &window.node_link)
+		}
+
+		windows.ShowWindow(hwnd, windows.SW_SHOW)
+		windows.UpdateWindow(hwnd)
 	}
 
-	if (_hwnd == nil) {
-		fmt.eprintfln("[ERROR] Window creation failed")
-		return false
-	}
-
-	// ShowCursor(style == .WINDOWED);
-	windows.UpdateWindow(_hwnd)
-	windows.ShowWindow(_hwnd, windows.SW_SHOW)
-	// _hdc = windows.GetDC(_hwnd)
-
-	return true
+	return window, true
 }
 
-window_free :: proc() {
-	if _hwnd == nil {
-		return
-	}
+// window_free :: proc(window: ^Window) {
+// 	list.remove(&_perm.window_list, &window.node_link)
+// 	// windows.ReleaseDC(_hwnd, _hdc)
+// 	windows.DestroyWindow(window.hwnd)
+// }
 
-	hinst := cast(windows.HINSTANCE)windows.GetModuleHandleW(nil)
-	windows.UnregisterClassW(_WNDCLASS_NAME, hinst)
-
-	// windows.ReleaseDC(_hwnd, _hdc)
-	windows.DestroyWindow(_hwnd)
-}
+// cleanup :: proc() {
+// windows.UnregisterClassW(_wndclass.lpszClassName, _wndclass.hInstance)
+// }
 
 //
 // Privates
 //
-@(private = "file")
-_WNDCLASS_NAME :: "WndClassName"
+@(private)
+_find_window_from_hwnd :: proc(hwnd: windows.HWND) -> ^Window {
+	it := list.iterator_head(_perm.window_list, Window, "node_link")
+	for it in list.iterate_next(&it) {
+		if it.hwnd == hwnd {
+			return it
+		}
+	}
+	return nil
+}
 
 @(private)
-_hwnd: windows.HWND
-// @(private)
-// _hdc: windows.HDC
+_perm: struct {
+	window_list:      list.List,
+	wndclass:         windows.WNDCLASSW,
+	evnts_this_frame: [dynamic]Event,
+}
+// hdc: windows.HDC

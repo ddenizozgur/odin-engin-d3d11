@@ -2,14 +2,16 @@ package r
 
 import "../wm"
 
-ui_button :: proc(text: string, pref_size := UI_Size_TextContent{0, 0}) -> (action: UI_Action) {
+ui_button :: proc(text: string) -> (action: UI_Action) {
+	w := ui_build_widget(
+		text,
+		{.DrawText, .DrawHoverBg, .Clickable, .FillWidth},
+		UI_Size_TextContent{0, 0},
+	)
+
 	mouse := cast([2]f32)wm.get_mouse_pos()
-
-	w := ui_build_widget(text, {.DrawText, .DrawBg, .Clickable}, pref_size)
-
 	action.hovered = point_within_rect(mouse, w.final_pos, w.final_size)
 	action.clicked = action.hovered && wm.mouse_is_released(.Left)
-
 	return action
 }
 
@@ -23,9 +25,10 @@ ui_to_test :: proc() {
 	{
 		UI_PARENT_SCOPED(ui_panel())
 
-		ui_button("Kralsın")
-		ui_button("Kralsın2")
-		ui_button("Kralsın3")
+		if ui_button("Kralsın").hovered {
+			ui_button("Kralsın2")
+			ui_button("Kralsın3")
+		}
 	}
 
 	{

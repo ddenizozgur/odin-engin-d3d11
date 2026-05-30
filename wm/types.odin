@@ -1,49 +1,108 @@
+#+build windows
 package wm
+
+import "core:container/intrusive/list"
+import "core:sys/windows"
 
 //
 // Types
 //
+Window_Style :: enum {
+	Windowed,
+	FullScreen,
+	// Secondary,
+}
+
+Window :: struct {
+	node_link:            list.Node,
+	//
+	hwnd:                 windows.HWND, // TODO
+	//
+	size_last_frame:      [2]i32,
+	size_this_frame:      [2]i32,
+	is_resized:           bool,
+	//
+	btns_last_frame:      [Mouse_Btn]bool,
+	btns_this_frame:      [Mouse_Btn]bool,
+	btns_down_cnt:        i32,
+	//
+	keys_last_frame:      [Key_VkCode]bool, // TODO: Scancodes ??
+	keys_this_frame:      [Key_VkCode]bool,
+	//
+	placement_last_frame: enum {
+		Restore,
+		Minimize,
+		Maximize,
+	},
+}
+
 Event_Key :: struct {
-	code:      Key_Code,
-	mod:       Key_Modifiers,
-	state:     Key_State,
+	window:    ^Window,
+	vkcode:    Key_VkCode,
+	mods:      Key_Mods,
+	down_up:   bool,
 	is_repeat: bool,
 	// repeat_count: int,
 }
-Event_Text :: distinct rune
 
-Event_Mouse_Button :: struct {
-	button: Mouse_Button,
-	state:  Key_State,
+Event_Text :: struct {
+	window: ^Window,
+	utf32:  rune,
 }
-Event_Mouse_Move :: distinct [2]i32
-Event_Mouse_Scroll :: distinct [2]f32
 
-Event_Window_Focus :: struct {}
-Event_Window_UnFocus :: struct {}
-Event_Window_Minimize :: struct {}
-Event_Window_Restore :: struct {}
-Event_Window_Maximize :: struct {}
-Event_Window_Close :: struct {}
+Event_MouseBtn :: struct {
+	window:  ^Window,
+	btn:     Mouse_Btn,
+	down_up: bool,
+}
+
+Event_MouseMove :: struct {
+	window: ^Window,
+	pos:    [2]i32,
+}
+
+Event_MouseScroll :: struct {
+	window: ^Window,
+	scroll: [2]f32,
+}
+
+Event_WindowFocus :: struct {
+	window: ^Window,
+}
+Event_WindowUnfocus :: struct {
+	window: ^Window,
+}
+Event_WindowMinimize :: struct {
+	window: ^Window,
+}
+Event_WindowMaximize :: struct {
+	window: ^Window,
+}
+Event_WindowRestore :: struct {
+	window: ^Window,
+}
+Event_WindowClose :: struct {
+	window: ^Window,
+}
 
 Event :: union {
 	Event_Key,
 	Event_Text,
-	Event_Mouse_Button,
-	Event_Mouse_Move,
-	Event_Mouse_Scroll,
-	Event_Window_Focus,
-	Event_Window_UnFocus,
-	Event_Window_Minimize,
-	Event_Window_Restore,
-	Event_Window_Maximize,
-	Event_Window_Close,
+	Event_MouseBtn,
+	Event_MouseMove,
+	Event_MouseScroll,
+	Event_WindowFocus,
+	Event_WindowUnfocus,
+	Event_WindowMinimize,
+	Event_WindowMaximize,
+	Event_WindowRestore,
+	Event_WindowClose,
 }
 
 //
 // Keys-Buttons
 //
-Mouse_Button :: enum {
+Mouse_Btn :: enum {
 	Left,
 	Middle,
 	Right,
@@ -51,7 +110,7 @@ Mouse_Button :: enum {
 	XButton2,
 }
 
-Key_Modifier :: enum {
+Key_Mod :: enum {
 	Shift,
 	Ctrl,
 	Alt, // AltGr ????
@@ -59,9 +118,9 @@ Key_Modifier :: enum {
 	CapsLock,
 	NumLock,
 }
-Key_Modifiers :: bit_set[Key_Modifier]
+Key_Mods :: bit_set[Key_Mod]
 
-Key_Code :: enum u32 {
+Key_VkCode :: enum u32 {
 	Null = 0,
 	Esc,
 	F1,
@@ -173,9 +232,4 @@ Key_Code :: enum u32 {
 	Num7,
 	Num8,
 	Num9,
-}
-
-Key_State :: enum {
-	Pressed,
-	Released,
 }

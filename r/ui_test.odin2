@@ -1,0 +1,388 @@
+package r
+
+import "../wm"
+import "core:container/intrusive/list"
+import "core:fmt"
+import "core:mem"
+import "core:mem/virtual"
+import "core:strings"
+
+UIT_Size_TextContent :: distinct [2]f32
+UIT_Size_ChildrenSum :: distinct [2]f32
+UIT_Size_HardCoded :: distinct [2]f32
+UIT_Size :: union {
+	UIT_Size_TextContent,
+	UIT_Size_ChildrenSum,
+	UIT_Size_HardCoded,
+}
+
+UIT_Widget_Flag :: enum {
+	DrawBg,
+	DrawHoverBg,
+	DrawBorder,
+	DrawText,
+	Clickable,
+	FillWidth,
+}
+UIT_Widget_Flags :: bit_set[UIT_Widget_Flag]
+
+UIT_Action :: struct {
+	hovered: bool,
+	pressed: bool,
+	clicked: bool,
+}
+
+UIT_Widget :: struct {
+	parent:          ^UIT_Widget,
+	children_list:   list.List,
+	sibling_link:    list.Node,
+	//
+	flags:           UIT_Widget_Flags,
+	pref_size:       UIT_Size,
+	text:            string,
+	//
+	this_frame_pos:  [2]f32,
+	this_frame_size: [2]f32,
+	last_frame_pos:  [2]f32,
+	last_frame_size: [2]f32,
+	action:          UIT_Action,
+}
+
+uit_init :: proc(font: Font, font_size := f32(16)) -> bool {
+	{
+		err := virtual.arena_init_growing(&_uit_perm.arena)
+		if err != .None {
+			fmt.eprintfln("[ERROR] Failed to initialize UIT perm arena: %v", err)
+			return false
+		}
+	}
+
+	{
+		err := virtual.arena_init_static(&_uit_per_frame.arena, commit_size = 8 * mem.Kilobyte)
+		if err != .None {
+			fmt.eprintfln("[ERROR] Failed to initialize UIT frame arena: %v", err)
+			return false
+		}
+	}
+
+	{
+		perm_alloc := virtual.arena_allocator(&_uit_perm.arena)
+		_uit_perm.widgets = make(map[string]^UIT_Widget, allocator = perm_alloc)
+		_uit_per_frame.text_key_counts = make(map[string]int, allocator = perm_alloc)
+		_uit_perm.font = font
+		_uit_perm.font_size = font_size
+	}
+
+	return true
+}
+
+ui_test_begin_frame :: proc() {
+	virtual.arena_free_all(&_uit_per_frame.arena)
+	clear(&_uit_per_frame.parent_stack)
+	clear(&_uit_per_frame.text_key_counts)
+
+	root := uit_build_root()
+	uit_push_parent(root)
+}
+
+ui_test_end_frame :: proc() {
+	root := _uit_per_frame.parent_stack[0]
+	uit_solve_layout_vertical(root)
+	uit_draw_tree(root)
+	uit_store_last_rects(root)
+}
+
+@(deferred_out = ui_test_end_frame)
+UI_TEST_FRAME_SCOPED :: #force_inline proc() {
+	ui_test_begin_frame()
+}
+
+uit_button :: proc(text: string) -> UIT_Action {
+	w := uit_build_widget(
+		text,
+		{.DrawText, .DrawHoverBg, .Clickable, .FillWidth},
+		UIT_Size_TextContent{0, 0},
+	)
+	return w.action
+}
+
+uit_panel :: proc(pref_size := UIT_Size_ChildrenSum{0, 0}) -> ^UIT_Widget {
+	return uit_build_widget("", {.DrawBg, .DrawBorder}, pref_size)
+}
+
+uit_to_test :: proc() {
+	UI_TEST_FRAME_SCOPED()
+
+	UI_TEST_PARENT_SCOPED(uit_panel())
+	if uit_button("Kralsin").hovered {
+		uit_button("Kralsin2")
+		uit_button("Kralsin3")
+	}
+}
+
+uit_build_root :: proc() -> ^UIT_Widget {
+	w := uit_get_or_create_widget("###root")
+	uit_equip_widget(w, "", {}, UIT_Size_HardCoded{0, 0}, false)
+	return w
+}
+
+uit_build_widget :: proc(
+	text: string,
+	flags: UIT_Widget_Flags,
+	pref_size: UIT_Size,
+) -> ^UIT_Widget {
+	key := uit_key_from_text(text)
+	w := uit_get_or_create_widget(key)
+	uit_equip_widget(w, uit_display_part_from_text(text), flags, pref_size, false)
+	parent := uit_top_parent()
+	uit_link_child(parent, w)
+	return w
+}
+
+uit_build_widget_clone_text :: proc(
+	text: string,
+	flags: UIT_Widget_Flags,
+	pref_size: UIT_Size,
+) -> ^UIT_Widget {
+	key := uit_key_from_text(text)
+	w := uit_get_or_create_widget(key)
+	uit_equip_widget(w, uit_display_part_from_text(text), flags, pref_size, true)
+	parent := uit_top_parent()
+	uit_link_child(parent, w)
+	return w
+}
+
+uit_get_or_create_widget :: proc(key: string) -> ^UIT_Widget {
+	w := _uit_perm.widgets[key] or_else nil
+	if w == nil {
+		perm_key := fmt.aprintf("%s", key, allocator = virtual.arena_allocator(&_uit_perm.arena))
+		w = virtual.new_clone(&_uit_perm.arena, UIT_Widget{}) or_else nil
+		if w == nil {
+			return nil
+		}
+		_uit_perm.widgets[perm_key] = w
+	}
+	return w
+}
+
+uit_equip_widget :: proc(
+	w: ^UIT_Widget,
+	text: string,
+	flags: UIT_Widget_Flags,
+	pref_size: UIT_Size,
+	clone_text: bool,
+) {
+	if w == nil {
+		return
+	}
+	w.parent = nil
+	w.children_list = {}
+	w.sibling_link = {}
+	w.flags = flags
+	w.pref_size = pref_size
+	if clone_text {
+		w.text = fmt.aprintf(
+			"%s",
+			text,
+			allocator = virtual.arena_allocator(&_uit_per_frame.arena),
+		)
+	} else {
+		w.text = text
+	}
+
+	mouse := cast([2]f32)wm.get_mouse_pos()
+	w.action.hovered = point_within_rect(mouse, w.last_frame_pos, w.last_frame_size)
+	w.action.pressed = w.action.hovered && wm.mouse_is_down(.Left)
+	w.action.clicked = w.action.hovered && wm.mouse_is_released(.Left)
+}
+
+uit_key_from_text :: proc(text: string) -> string {
+	count := _uit_per_frame.text_key_counts[text] or_else 0
+	_uit_per_frame.text_key_counts[text] = count + 1
+
+	return fmt.aprintf(
+		"%s##%d",
+		text,
+		count,
+		allocator = virtual.arena_allocator(&_uit_per_frame.arena),
+	)
+}
+
+uit_display_part_from_text :: proc(text: string) -> string {
+	idx := strings.index(text, "##")
+	if idx >= 0 {
+		return text[:idx]
+	}
+	return text
+}
+
+uit_link_child :: proc(parent, child: ^UIT_Widget) {
+	if parent == nil || child == nil {
+		return
+	}
+	child.parent = parent
+	list.push_back(&parent.children_list, &child.sibling_link)
+}
+
+uit_solve_layout_vertical :: proc(parent: ^UIT_Widget) {
+	if parent == nil {
+		return
+	}
+
+	cursor := parent.this_frame_pos + UI_OUTER_PADDING
+	it := list.iterator_head(parent.children_list, UIT_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		child.this_frame_pos = cursor
+
+		pref_size := uit_get_pref_size(child)
+		if .FillWidth in child.flags {
+			child.this_frame_size = {
+				parent.this_frame_size.x - UI_OUTER_PADDING.x * 2,
+				pref_size.y,
+			}
+		} else {
+			child.this_frame_size = pref_size
+		}
+
+		uit_solve_layout_vertical(child)
+		cursor.y += child.this_frame_size.y + UI_OUTER_PADDING.y
+	}
+}
+
+uit_get_pref_size :: proc(w: ^UIT_Widget) -> [2]f32 {
+	switch s in w.pref_size {
+	case UIT_Size_HardCoded:
+		return cast([2]f32)s
+
+	case UIT_Size_TextContent:
+		bbox := text_bbox(_uit_perm.font, w.text, _uit_perm.font_size)
+		return bbox + UI_INNER_PADDING * 2
+
+	case UIT_Size_ChildrenSum:
+		res := [2]f32{0, UI_OUTER_PADDING.y}
+
+		it := list.iterator_head(w.children_list, UIT_Widget, "sibling_link")
+		for child in list.iterate_next(&it) {
+			child_size := uit_get_pref_size(child)
+			res.x = max(res.x, child_size.x)
+			res.y += child_size.y + UI_OUTER_PADDING.y
+		}
+
+		res.x += UI_OUTER_PADDING.x * 2
+		return res
+	}
+
+	return 0
+}
+
+uit_draw_tree :: proc(w: ^UIT_Widget) {
+	if w == nil {
+		return
+	}
+
+	draw_bg :=
+		.DrawBg in w.flags || (.DrawHoverBg in w.flags && (w.action.hovered || w.action.pressed))
+	if draw_bg {
+		bgcol := uit_bg_color_rect(w)
+		if .DrawBorder in w.flags {
+			imm_push_rect(w.this_frame_pos, w.this_frame_size, ui_theme[.Border], UI_CRADII)
+			imm_push_rect(
+				w.this_frame_pos + UI_BORDER_SIZE,
+				w.this_frame_size - UI_BORDER_SIZE * 2,
+				bgcol,
+				UI_CRADII - UI_BORDER_SIZE,
+			)
+		} else {
+			imm_push_rect(w.this_frame_pos, w.this_frame_size, bgcol, UI_CRADII)
+		}
+	}
+
+	if .DrawText in w.flags && w.text != "" {
+		imm_push_text(
+			_uit_perm.font,
+			w.text,
+			w.this_frame_pos + UI_INNER_PADDING,
+			_uit_perm.font_size,
+			uit_text_color(w),
+		)
+	}
+
+	it := list.iterator_head(w.children_list, UIT_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		uit_draw_tree(child)
+	}
+}
+
+uit_bg_color_rect :: proc(w: ^UIT_Widget) -> [4]RGBA8 {
+	if .DrawHoverBg in w.flags {
+		if w.action.pressed {
+			return cast([4]RGBA8)ui_theme[.CtrlDown]
+		}
+		return {
+			ui_theme[.Hover_Top],
+			ui_theme[.Hover_Top],
+			ui_theme[.Hover_Btm],
+			ui_theme[.Hover_Btm],
+		}
+	}
+	return {
+		ui_theme[.PanelBg_Top],
+		ui_theme[.PanelBg_Top],
+		ui_theme[.PanelBg_Btm],
+		ui_theme[.PanelBg_Btm],
+	}
+}
+
+uit_text_color :: proc(w: ^UIT_Widget) -> [4]RGBA8 {
+	if .Clickable in w.flags && !w.action.hovered {
+		return cast([4]RGBA8)ui_theme[.MutedText]
+	}
+	return cast([4]RGBA8)ui_theme[.Text]
+}
+
+uit_store_last_rects :: proc(w: ^UIT_Widget) {
+	if w == nil {
+		return
+	}
+	w.last_frame_pos = w.this_frame_pos
+	w.last_frame_size = w.this_frame_size
+
+	it := list.iterator_head(w.children_list, UIT_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		uit_store_last_rects(child)
+	}
+}
+
+uit_top_parent :: proc() -> ^UIT_Widget {
+	top := len(_uit_per_frame.parent_stack) - 1
+	return _uit_per_frame.parent_stack[top]
+}
+
+uit_push_parent :: proc(parent: ^UIT_Widget) {
+	append(&_uit_per_frame.parent_stack, parent)
+}
+uit_pop_parent :: proc() {
+	pop(&_uit_per_frame.parent_stack)
+}
+@(deferred_out = uit_pop_parent)
+UI_TEST_PARENT_SCOPED :: #force_inline proc(parent: ^UIT_Widget) {
+	uit_push_parent(parent)
+}
+
+@(private = "file")
+UIT_PARENT_STACK_MAX :: 256
+
+@(private = "file")
+_uit_perm: struct {
+	arena:     virtual.Arena,
+	widgets:   map[string]^UIT_Widget,
+	font:      Font,
+	font_size: f32,
+}
+
+@(private = "file")
+_uit_per_frame: struct {
+	arena:           virtual.Arena,
+	text_key_counts: map[string]int,
+	parent_stack:    [dynamic; UIT_PARENT_STACK_MAX]^UIT_Widget,
+}

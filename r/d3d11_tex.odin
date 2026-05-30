@@ -109,7 +109,7 @@ d3d11_tex2d_alloc_ex :: proc(
 			SysMemSlicePitch = 0,
 		}
 
-		hr := _d3d11_persist.device->CreateTexture2D(&desc, &init_data, &d3d_tex)
+		hr := _d3d11_perm.device->CreateTexture2D(&desc, &init_data, &d3d_tex)
 		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] Failed to create D3D11 Texture2D")
 			return
@@ -123,7 +123,7 @@ d3d11_tex2d_alloc_ex :: proc(
 			Texture2D = {MipLevels = 1},
 		}
 
-		hr := _d3d11_persist.device->CreateShaderResourceView(d3d_tex, &desc, &tex.srv)
+		hr := _d3d11_perm.device->CreateShaderResourceView(d3d_tex, &desc, &tex.srv)
 		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] Failed to create D3D11 Shader Resource View")
 			return
@@ -144,13 +144,13 @@ d3d11_tex2d_alloc_from_img :: proc(img: ^image.Image) -> (tex2d: D3D11_Tex2D, go
 		case 2:
 			tex2d_fmt = .RG8_UNORM
 		case 3:
-			fmt.eprintf("[ERROR] Not yet implemented")
+			fmt.eprintf("[ERROR] Not implemented")
 			return
 		case 4:
 			tex2d_fmt = .RGBA8_UNORM
 		}
 	case:
-		fmt.eprintf("[ERROR] Not yet implemented")
+		fmt.eprintf("[ERROR] Not implemented")
 		return
 	}
 

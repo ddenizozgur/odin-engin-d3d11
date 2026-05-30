@@ -9,10 +9,12 @@ import "r"
 import "wm"
 
 varela: r.Font
+swapchain: r.Swapchain
 
-to_init :: proc() -> bool {
-	r.d3d11_load()
-	r.imm_d3d11_load()
+to_initialize :: proc(window: ^wm.Window) -> bool {
+	r.d3d11_initialize() or_return
+	swapchain = r.d3d11_create_swapchain(window) or_return
+	r.draw_initialize() or_return
 
 	{
 		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
@@ -25,47 +27,44 @@ to_init :: proc() -> bool {
 		varela = r.msdf_load_from_file(json_path, png_path) or_return
 	}
 
-	r.ui_init(varela)
-
 	return true
 }
 
-to_r :: proc(dt: f32) {
+to_render :: proc(window: ^wm.Window, dt: f32) {
 	@(static) et: f32
 	defer et += dt
 
-	client_size := cast([2]f32)wm.get_client_size()
-	mouse_pos := cast([2]f32)wm.get_mouse_pos()
+	size, _ := wm.get_client_size_2f32(window)
+	mouse_pos := wm.get_mouse_pos_2f32(window)
 
 	{
-		r.IMM_FRAME_SCOPED()
+		r.DRAW_FRAME_SCOPED(window, &swapchain)
+		r.d3d11_clear_default_rtv(swapchain, r.NAYSAYER_BG)
 
-		r.d3d11_clear_default_rtv(r.NAYSAYER_BG)
+		some_bg(size, et)
 
-		some_bg(et)
-		// liq_neon(et)
+		// liq_neon(window, et)
 
-		// r.imm_push_rect(mouse_pos, {120, 120}, r.BLUE)
+		// draw_some_text(varela, 0, 1)
 
-		r.ui_to_test()
+		r.draw_rect(mouse_pos, 50, r.RGBA8{0xff, 0xff, 0xff, 0xaa})
 
-		draw_fps(varela, {client_size.x, 0}, 20, dt, .TopRight)
+		draw_fps(varela, {size.x, 0}, 20, dt, .TopRight)
 	}
 
-	r.d3d11_present()
+	r.d3d11_present(swapchain)
 }
 
 main :: proc() {
 	wm.set_console_utf8()
+	_ = wm.initialize()
 
-	_ = wm.window_init("Kralsın", {1280, 800}, .Windowed)
-	defer wm.window_free()
-
-	_ = to_init()
+	window, _ := wm.window_alloc("Kralsin", {1280, 800}, .Windowed)
+	_ = to_initialize(window)
 
 	prev_time := time.now()
 	frame_loop: for {
-		r.d3d11_swapchain_wait()
+		r.d3d11_swapchain_wait(swapchain, window)
 
 		this_time := time.now()
 		duration := time.diff(prev_time, this_time)
@@ -74,12 +73,20 @@ main :: proc() {
 
 		for evnt in wm.poll_events_this_frame() {
 			#partial switch data in evnt {
-			case wm.Event_Window_Close:
+			case wm.Event_WindowClose:
 				break frame_loop
 			}
 		}
 
-		to_r(dt)
+		/*
+		if wm.window_is_minimized(window) {
+			// time.sleep(10 * time.Millisecond)
+			windows.WaitMessage() // !! PeekMessage !!
+			return
+		}
+		*/
+
+		to_render(window, dt)
 	}
 }
 
@@ -106,16 +113,30 @@ draw_fps :: proc(
 		fps += 1
 	}
 
-	if et >= 1. {
+	if et >= 1 {
 		fps_str = fmt.bprintf(fps_buf[:], "FPS: %v", fps)
 
-		et -= 1.
+		et -= 1
 		fps = 0
 	}
 
 	bounds := r.text_bbox(font, fps_str, font_size)
 	real_pos := r.pos_from_align_kind(pos, bounds, align_kind)
-	r.imm_push_text(font, fps_str, real_pos, font_size, r.YELLOW)
+	r.draw_text(font, fps_str, real_pos, font_size, r.YELLOW)
+}
+
+some_bg :: proc(client_size: [2]f32, et: f32) {
+	s1 := math.sin_f32(et * 0.15)
+	s2 := math.cos_f32(et * 0.22)
+	s3 := math.sin_f32(et * 0.18 + 1.0)
+	s4 := math.cos_f32(et * 0.12 + 2.0)
+
+	tl := r.vec4f32_to_rgba8({0.10 + 0.05 * s1, 0.02, 0.25 + 0.1 * s2, 1.0})
+	tr := r.vec4f32_to_rgba8({0.30 + 0.10 * s3, 0.05, 0.15, 1.0})
+	bl := r.vec4f32_to_rgba8({0.02, 0.15 + 0.05 * s4, 0.35 + 0.1 * s1, 1.0})
+	br := r.vec4f32_to_rgba8({0.15, 0.05, 0.25 + 0.05 * s2, 1.0})
+
+	r.draw_rect({0, 0}, client_size, {tl, tr, bl, br})
 }
 
 draw_some_text :: proc(font: r.Font, pos: [2]f32, scale: f32) {
@@ -130,7 +151,7 @@ draw_some_text :: proc(font: r.Font, pos: [2]f32, scale: f32) {
 		{
 			// runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
-			r.imm_push_text(
+			r.draw_text(
 				font,
 				"The quick brown fox jumps over the lazy dog",
 				// fmt.tprintf("The quick brown fox jumps over the lazy dog, %v", font_size),
@@ -142,23 +163,7 @@ draw_some_text :: proc(font: r.Font, pos: [2]f32, scale: f32) {
 	}
 }
 
-some_bg :: proc(et: f32) {
-	client_size := cast([2]f32)wm.get_client_size()
-
-	s1 := math.sin_f32(et * 0.15)
-	s2 := math.cos_f32(et * 0.22)
-	s3 := math.sin_f32(et * 0.18 + 1.0)
-	s4 := math.cos_f32(et * 0.12 + 2.0)
-
-	tl := r.vec4f32_to_rgba8({0.10 + 0.05 * s1, 0.02, 0.25 + 0.1 * s2, 1.0})
-	tr := r.vec4f32_to_rgba8({0.30 + 0.10 * s3, 0.05, 0.15, 1.0})
-	bl := r.vec4f32_to_rgba8({0.02, 0.15 + 0.05 * s4, 0.35 + 0.1 * s1, 1.0})
-	br := r.vec4f32_to_rgba8({0.15, 0.05, 0.25 + 0.05 * s2, 1.0})
-
-	r.imm_push_rect({0, 0}, client_size, {tl, tr, bl, br})
-}
-
-liq_neon :: proc(et: f32) {
+liq_neon :: proc(window: ^wm.Window, et: f32) {
 	color_at :: proc(nx, ny, t: f32) -> [4]f32 {
 		v1 := math.sin(nx * 10.0 + t * 1.5)
 		v2 := math.sin(ny * 8.0 - t * 1.2)
@@ -178,7 +183,7 @@ liq_neon :: proc(et: f32) {
 		return {r, g, b, 1.0}
 	}
 
-	client_size := cast([2]f32)wm.get_client_size()
+	client_size, _ := wm.get_client_size_2f32(window)
 
 	cols := 40
 	rows := 25
@@ -211,7 +216,7 @@ liq_neon :: proc(et: f32) {
 
 			cradii := (cell_w * 0.5) * scale
 
-			r.imm_push_rect(
+			r.draw_rect(
 				base_pos + offset,
 				size,
 				{
