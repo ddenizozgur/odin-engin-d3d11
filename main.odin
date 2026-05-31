@@ -8,10 +8,17 @@ import "core:time"
 import "r"
 import "wm"
 
-varela: r.Font
+some_font: r.Font
+
+window: ^wm.Window
 swapchain: r.Swapchain
 
-to_initialize :: proc(window: ^wm.Window) -> bool {
+to_initialize :: proc() -> bool {
+	wm.set_console_utf8()
+
+	wm.initialize() or_return
+	window = wm.window_alloc("Kralsin", {1280, 800}, .Windowed) or_return
+
 	r.d3d11_initialize() or_return
 	swapchain = r.d3d11_create_swapchain(window) or_return
 	r.draw_initialize() or_return
@@ -20,17 +27,16 @@ to_initialize :: proc(window: ^wm.Window) -> bool {
 		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
 		json_path, png_path := r.msdf_atlas_gen(
-			"rsrc/font/VarelaRound-Regular.ttf",
+			"rsrc/font/SourceSans3-Regular.ttf",
 			allocator = context.temp_allocator,
 		) or_return
-
-		varela = r.msdf_load_from_file(json_path, png_path) or_return
+		some_font = r.msdf_load_from_file(json_path, png_path) or_return
 	}
 
 	return true
 }
 
-to_render :: proc(window: ^wm.Window, dt: f32) {
+to_render :: proc(dt: f32) {
 	@(static) et: f32
 	defer et += dt
 
@@ -45,22 +51,17 @@ to_render :: proc(window: ^wm.Window, dt: f32) {
 
 		// liq_neon(window, et)
 
-		// draw_some_text(varela, 0, 1)
+		// r.draw_rect(mouse_pos, 50, r.RGBA8{0xff, 0xff, 0xff, 0xaa})
+		draw_some_text(some_font, 0, 1)
 
-		r.draw_rect(mouse_pos, 50, r.RGBA8{0xff, 0xff, 0xff, 0xaa})
-
-		draw_fps(varela, {size.x, 0}, 20, dt, .TopRight)
+		draw_fps(some_font, {size.x, 0}, 20, dt, .TopRight)
 	}
 
 	r.d3d11_present(swapchain)
 }
 
 main :: proc() {
-	wm.set_console_utf8()
-	_ = wm.initialize()
-
-	window, _ := wm.window_alloc("Kralsin", {1280, 800}, .Windowed)
-	_ = to_initialize(window)
+	_ = to_initialize()
 
 	prev_time := time.now()
 	frame_loop: for {
@@ -86,7 +87,7 @@ main :: proc() {
 		}
 		*/
 
-		to_render(window, dt)
+		to_render(dt)
 	}
 }
 
@@ -149,12 +150,12 @@ draw_some_text :: proc(font: r.Font, pos: [2]f32, scale: f32) {
 		defer y += line_h
 
 		{
-			// runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+			runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
 			r.draw_text(
 				font,
-				"The quick brown fox jumps over the lazy dog",
-				// fmt.tprintf("The quick brown fox jumps over the lazy dog, %v", font_size),
+				// "The quick brown fox jumps over the lazy dog",
+				fmt.tprintf("The quick brown fox jumps over the lazy dog, %v", font_size),
 				{pos.x, y},
 				font_size,
 				r.WHITE,
