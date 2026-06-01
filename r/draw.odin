@@ -331,7 +331,7 @@ _draw_flush_batch :: proc() -> bool {
 		return true
 	}
 
-	{ 	// Upload all instances once.
+	{ 	// Map instances
 		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
 		hr := _d3d11_perm.device_ctx->Map(
 			_draw_perm.instanced_buffer_gpu,
@@ -435,12 +435,9 @@ Texture2D tex2d : register(t0);
 SamplerState sampler_ : register(s0);
 
 struct vs_in {
-  float4 dst : POS;
-  float4 src : TEX;
-  float4 color_tl : COL0;
-  float4 color_tr : COL1;
-  float4 color_bl : COL2;
-  float4 color_br : COL3;
+  float4 dst_rect : POS;
+  float4 src_rect : TEX;
+  float4 color_rect[4] : COL;
   float cradii : CRADII;
   uint kind : KIND;
   uint vertex_id : SV_VertexID;
@@ -457,42 +454,29 @@ struct vs_out {
 };
 
 vs_out vs_main(vs_in input) {
-	float2 local_vert;
-	float4 local_color;
-	float2 local_uv;
+	static const float2 corners[] = {
+		{-1, -1},	// TL
+		{+1, -1},	// TR
+		{-1, +1},	// BL
+		{+1, +1},	// BR
+	};
 
-	switch (input.vertex_id) {
-	case 0:	// TL
-		local_vert  = input.dst.xy;
-		local_color = input.color_tl;
-		local_uv = input.src.xy;
-		break;
-	case 1:	// TR
-		local_vert  = input.dst.zy;
-		local_color = input.color_tr;
-		local_uv = input.src.zy;
-		break;
-	case 2:	// BL
-		local_vert  = input.dst.xw;
-		local_color = input.color_bl;
-		local_uv = input.src.xw;
-		break;
-	case 3:	// BR
-		local_vert  = input.dst.zw;
-		local_color = input.color_br;
-		local_uv = input.src.zw;
-		break;
-	}
+	float2 local_pos = corners[input.vertex_id];
+	float4 local_color = input.color_rect[input.vertex_id];
+	float2 local_uv = local_pos * 0.5 + 0.5;
 
-	float2 half_size = (input.dst.zw - input.dst.xy) * 0.5;
-  float2 center = input.dst.xy + half_size;
-  float2 sdf_pos = local_vert - center;
+	float2 half_size = (input.dst_rect.zw - input.dst_rect.xy) * 0.5;
+  float2 center = input.dst_rect.xy + half_size;
+
+  float2 sdf_pos = local_pos * half_size;
+  float2 pixel_pos = local_pos * half_size + center;
+  float2 tex2d_uv = lerp(input.src_rect.xy, input.src_rect.zw, local_uv);
 
 	vs_out output;
 	{
-		output.sv_pos = mul(proj_matrix, float4(local_vert, 0.f, 1.f));
+		output.sv_pos = mul(proj_matrix, float4(pixel_pos, 0.f, 1.f));
 		output.color = local_color;
-		output.tex2d_uv = local_uv;
+		output.tex2d_uv = tex2d_uv;
 		output.sdf_pos = sdf_pos;
 		output.half_size = half_size;
 		output.cradii = input.cradii;
@@ -517,7 +501,7 @@ float msdf_median(float r, float g, float b) {
   return max(min(r, g), min(max(r, g), b));
 }
 
-float gradient_noise(float2 n) {
+float some_noise(float2 n) {
   float f = 0.06711056 * n.x + 0.00583715 * n.y;
   return frac(52.9829189 * frac(f));
 }
@@ -536,8 +520,8 @@ float4 ps_main(vs_out input) : SV_TARGET {
 		if (input.cradii > 0) {
 			float safe_radius = min(input.cradii, min(input.half_size.x, input.half_size.y));
 			float dist = rect_sdf(input.sdf_pos, input.half_size, safe_radius);
-			// float aa = fwidth(dist);
-			float aa = length(float2(ddx(dist), ddy(dist)));
+			float aa = fwidth(dist);
+			// float aa = length(float2(ddx(dist), ddy(dist)));
 			float feather = aa * 0.5;
   		alpha = 1 - smoothstep(-feather, feather, dist);
   	}
@@ -564,7 +548,7 @@ float4 ps_main(vs_out input) : SV_TARGET {
   out_color.a *= alpha;
 
   // TODO: check for video compression algos
-  float noise = gradient_noise(input.sv_pos.xy);
+  float noise = some_noise(input.sv_pos.xy);
   noise = (noise - 0.5) / 255.0;
   out_color.rgb += noise;
 

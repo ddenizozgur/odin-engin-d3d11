@@ -9,9 +9,17 @@ import "r"
 import "wm"
 
 some_font: r.Font
+some_font2: r.Font
 
 window: ^wm.Window
 swapchain: r.Swapchain
+
+font_load :: proc(ttf_path: string) -> (font: r.Font, good: bool) {
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	json_path, png_path := r.msdf_atlas_gen(ttf_path, allocator = context.temp_allocator) or_return
+	font = r.msdf_load_from_file(json_path, png_path) or_return
+	return font, true
+}
 
 to_initialize :: proc() -> bool {
 	wm.set_console_utf8()
@@ -23,15 +31,12 @@ to_initialize :: proc() -> bool {
 	swapchain = r.d3d11_create_swapchain(window) or_return
 	r.draw_initialize() or_return
 
-	{
-		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	// some_font2 = font_load("rsrc/font/SourceSans3-Regular.ttf") or_return
+	some_font2 = font_load("rsrc/font/Inter-Regular.ttf") or_return
+	// some_font = font_load("rsrc/font/Inter-Medium.ttf") or_return
+	some_font = font_load("rsrc/font/VarelaRound-Regular.ttf") or_return
 
-		json_path, png_path := r.msdf_atlas_gen(
-			"rsrc/font/SourceSans3-Regular.ttf",
-			allocator = context.temp_allocator,
-		) or_return
-		some_font = r.msdf_load_from_file(json_path, png_path) or_return
-	}
+	r.ui_initialize(window, some_font2, 15)
 
 	return true
 }
@@ -40,24 +45,26 @@ to_render :: proc(dt: f32) {
 	@(static) et: f32
 	defer et += dt
 
-	size, _ := wm.get_client_size_2f32(window)
+	client_size, _ := wm.get_client_size_2f32(window)
 	mouse_pos := wm.get_mouse_pos_2f32(window)
 
 	{
 		r.DRAW_FRAME_SCOPED(window, &swapchain)
 		r.d3d11_clear_default_rtv(swapchain, r.NAYSAYER_BG)
 
-		some_bg(size, et)
+		some_bg(client_size, et)
 
 		// liq_neon(window, et)
 
-		// r.draw_rect(mouse_pos, 50, r.RGBA8{0xff, 0xff, 0xff, 0xaa})
-		draw_some_text(some_font, 0, 1)
+		// draw_some_text(some_font, 0, 1)
+		// draw_some_text(some_font2, {client_size.x / 2, 0}, 1)
 
-		draw_fps(some_font, {size.x, 0}, 20, dt, .TopRight)
+		r.ui_to_test()
+
+		draw_fps(some_font, {client_size.x, 0}, 20, dt, .TopRight)
 	}
 
-	r.d3d11_present(swapchain)
+	r.d3d11_present(swapchain, 1)
 }
 
 main :: proc() {
@@ -121,8 +128,8 @@ draw_fps :: proc(
 		fps = 0
 	}
 
-	bounds := r.text_bbox(font, fps_str, font_size)
-	real_pos := r.pos_from_align_kind(pos, bounds, align_kind)
+	bbox := r.text_bbox(font, fps_str, font_size)
+	real_pos := r.pos_from_align_kind(pos, bbox, align_kind)
 	r.draw_text(font, fps_str, real_pos, font_size, r.YELLOW)
 }
 
