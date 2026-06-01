@@ -1,7 +1,7 @@
 package r
 
 ui_button :: proc(text: string) -> UI_Action {
-	widget, action := ui_build_widget(
+	_, action := ui_build_widget(
 		text,
 		{.HasText, .HasBg, .FillWidth, .Clickable},
 		UI_SizePerAxis_TextContent{},

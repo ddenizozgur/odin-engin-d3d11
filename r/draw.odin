@@ -20,14 +20,14 @@ Per_Instanced :: struct {
 	},
 }
 
-Draw_State :: struct {
+Binding :: struct {
 	sampler_kind: Sampler_Kind,
 	depth_kind:   Depth_Kind,
 	tex2d_srv:    ^D3D11.IShaderResourceView,
 }
 
 Batch_Run :: struct {
-	state:      Draw_State,
+	binding:    Binding,
 	first, cnt: u32,
 }
 
@@ -38,7 +38,7 @@ RUNS_MAX :: 1024
 Batch :: struct {
 	instanced: [dynamic; INSTANCED_MAX]Per_Instanced,
 	runs:      [dynamic; RUNS_MAX]Batch_Run,
-	state:     Draw_State,
+	binding:   Binding,
 }
 
 draw_initialize :: proc() -> bool {
@@ -50,7 +50,7 @@ draw_initialize :: proc() -> bool {
 			CPUAccessFlags = {.WRITE},
 		}
 
-		hr := _d3d11_perm.device->CreateBuffer(&desc, nil, &_draw_perm.instanced_buffer_gpu)
+		hr := _d3d11_state.device->CreateBuffer(&desc, nil, &_draw_state.instanced_buffer_gpu)
 		if windows.FAILED(hr) {
 			fmt.eprintfln("[ERROR] Failed to create draw instance buffer")
 			return false
@@ -62,35 +62,35 @@ draw_initialize :: proc() -> bool {
 			_draw_shader,
 			"draw_shader.hlsl",
 			_draw_ilayout_desc,
-			&_draw_perm.vshader,
+			&_draw_state.vshader,
 		) or_return
 
-		d3d11_pshader_init(_draw_shader, "draw_shader.hlsl", &_draw_perm.pshader) or_return
+		d3d11_pshader_init(_draw_shader, "draw_shader.hlsl", &_draw_state.pshader) or_return
 
-		d3d11_uniforms_init(_Draw_Uniforms, &_draw_perm.uniforms_buffer_gpu) or_return
+		d3d11_uniforms_init(_Draw_Uniforms, &_draw_state.uniforms_buffer_gpu) or_return
 	}
 
 	{ 	// Bind pipeline
 		stride := cast(u32)size_of(Per_Instanced)
 		offset := u32(0)
-		_d3d11_perm.device_ctx->IASetVertexBuffers(
+		_d3d11_state.device_ctx->IASetVertexBuffers(
 			0,
 			1,
-			&_draw_perm.instanced_buffer_gpu,
+			&_draw_state.instanced_buffer_gpu,
 			&stride,
 			&offset,
 		)
-		_d3d11_perm.device_ctx->IASetInputLayout(_draw_perm.vshader.ilayout)
-		_d3d11_perm.device_ctx->IASetPrimitiveTopology(.TRIANGLESTRIP)
+		_d3d11_state.device_ctx->IASetInputLayout(_draw_state.vshader.ilayout)
+		_d3d11_state.device_ctx->IASetPrimitiveTopology(.TRIANGLESTRIP)
 
-		_d3d11_perm.device_ctx->VSSetShader(_draw_perm.vshader.vshader, nil, 0)
-		_d3d11_perm.device_ctx->VSSetConstantBuffers(0, 1, &_draw_perm.uniforms_buffer_gpu)
+		_d3d11_state.device_ctx->VSSetShader(_draw_state.vshader.vshader, nil, 0)
+		_d3d11_state.device_ctx->VSSetConstantBuffers(0, 1, &_draw_state.uniforms_buffer_gpu)
 
-		_d3d11_perm.device_ctx->PSSetShader(_draw_perm.pshader, nil, 0)
-		_d3d11_perm.device_ctx->PSSetConstantBuffers(0, 1, &_draw_perm.uniforms_buffer_gpu)
+		_d3d11_state.device_ctx->PSSetShader(_draw_state.pshader, nil, 0)
+		_d3d11_state.device_ctx->PSSetConstantBuffers(0, 1, &_draw_state.uniforms_buffer_gpu)
 
-		_d3d11_perm.device_ctx->RSSetState(_d3d11_perm.rasterizer)
-		_d3d11_perm.device_ctx->OMSetBlendState(_d3d11_perm.blend_state, nil, 0xffffffff)
+		_d3d11_state.device_ctx->RSSetState(_d3d11_state.rasterizer)
+		_d3d11_state.device_ctx->OMSetBlendState(_d3d11_state.blend_state, nil, 0xffffffff)
 	}
 
 	return true
@@ -107,9 +107,9 @@ draw_begin_frame :: proc(window: ^wm.Window, swapchain: ^Swapchain) {
 	}
 
 	_draw_upload_uniforms(size) // check
-	// clear(&_draw_perm.batch.instanced)
-	// clear(&_draw_perm.batch.runs)
-	// _draw_perm.batch.state = {}
+	// clear(&_draw_state.batch.instanced)
+	// clear(&_draw_state.batch.runs)
+	// _draw_state.batch.binding = {}
 }
 draw_end_frame :: proc() {
 	_draw_flush_batch()
@@ -120,10 +120,10 @@ DRAW_FRAME_SCOPED :: #force_inline proc(window: ^wm.Window, swapchain: ^Swapchai
 }
 
 draw_set_sampler :: proc(kind: Sampler_Kind) {
-	_draw_perm.batch.state.sampler_kind = kind
+	_draw_state.batch.binding.sampler_kind = kind
 }
 draw_set_depth :: proc(kind: Depth_Kind) {
-	_draw_perm.batch.state.depth_kind = kind
+	_draw_state.batch.binding.depth_kind = kind
 }
 
 draw_rect :: proc(
@@ -294,12 +294,12 @@ text_bbox :: proc(font: Font, text: string, font_size: f32) -> [2]f32 {
 //
 @(private = "file")
 _draw_set_tex2d :: proc(srv: ^D3D11.IShaderResourceView) {
-	_draw_perm.batch.state.tex2d_srv = srv
+	_draw_state.batch.binding.tex2d_srv = srv
 }
 
 @(private = "file")
 _draw_instanced :: proc(inst: Per_Instanced) {
-	batch := &_draw_perm.batch
+	batch := &_draw_state.batch
 	if len(batch.instanced) + 1 > cap(batch.instanced) {
 		if !_draw_flush_batch() {
 			return
@@ -308,8 +308,8 @@ _draw_instanced :: proc(inst: Per_Instanced) {
 
 	needs_new_run := len(batch.runs) == 0
 	if !needs_new_run {
-		last_state := batch.runs[len(batch.runs) - 1].state
-		needs_new_run = last_state != batch.state
+		last_binding := batch.runs[len(batch.runs) - 1].binding
+		needs_new_run = last_binding != batch.binding
 	}
 	if needs_new_run && len(batch.runs) + 1 > cap(batch.runs) {
 		if !_draw_flush_batch() {
@@ -318,7 +318,7 @@ _draw_instanced :: proc(inst: Per_Instanced) {
 	}
 	if needs_new_run {
 		start_index := cast(u32)len(batch.instanced)
-		append(&batch.runs, Batch_Run{state = batch.state, first = start_index, cnt = 0})
+		append(&batch.runs, Batch_Run{binding = batch.binding, first = start_index, cnt = 0})
 	}
 
 	append(&batch.instanced, inst)
@@ -327,14 +327,14 @@ _draw_instanced :: proc(inst: Per_Instanced) {
 
 @(private = "file")
 _draw_flush_batch :: proc() -> bool {
-	if len(_draw_perm.batch.instanced) == 0 {
+	if len(_draw_state.batch.instanced) == 0 {
 		return true
 	}
 
 	{ 	// Map instances
 		sub_rsrc: D3D11.MAPPED_SUBRESOURCE
-		hr := _d3d11_perm.device_ctx->Map(
-			_draw_perm.instanced_buffer_gpu,
+		hr := _d3d11_state.device_ctx->Map(
+			_draw_state.instanced_buffer_gpu,
 			0,
 			.WRITE_DISCARD,
 			{},
@@ -347,21 +347,28 @@ _draw_flush_batch :: proc() -> bool {
 
 		mem.copy(
 			sub_rsrc.pData,
-			raw_data(_draw_perm.batch.instanced[:]),
-			len(_draw_perm.batch.instanced) * size_of(Per_Instanced),
+			raw_data(_draw_state.batch.instanced[:]),
+			len(_draw_state.batch.instanced) * size_of(Per_Instanced),
 		)
-		_d3d11_perm.device_ctx->Unmap(_draw_perm.instanced_buffer_gpu, 0)
+		_d3d11_state.device_ctx->Unmap(_draw_state.instanced_buffer_gpu, 0)
 	}
 
-	for &run in _draw_perm.batch.runs {
-		_d3d11_perm.device_ctx->PSSetShaderResources(0, 1, &run.state.tex2d_srv)
-		_d3d11_perm.device_ctx->PSSetSamplers(0, 1, &_d3d11_perm.samplers[run.state.sampler_kind])
-		_d3d11_perm.device_ctx->OMSetDepthStencilState(_d3d11_perm.depths[run.state.depth_kind], 0)
-		_d3d11_perm.device_ctx->DrawInstanced(4, run.cnt, 0, run.first)
+	for &run in _draw_state.batch.runs {
+		_d3d11_state.device_ctx->PSSetShaderResources(0, 1, &run.binding.tex2d_srv)
+		_d3d11_state.device_ctx->PSSetSamplers(
+			0,
+			1,
+			&_d3d11_state.samplers[run.binding.sampler_kind],
+		)
+		_d3d11_state.device_ctx->OMSetDepthStencilState(
+			_d3d11_state.depths[run.binding.depth_kind],
+			0,
+		)
+		_d3d11_state.device_ctx->DrawInstanced(4, run.cnt, 0, run.first)
 	}
 
-	clear(&_draw_perm.batch.instanced)
-	clear(&_draw_perm.batch.runs)
+	clear(&_draw_state.batch.instanced)
+	clear(&_draw_state.batch.runs)
 
 	return true
 }
@@ -376,7 +383,7 @@ _draw_set_viewport :: proc(size: [2]f32) {
 		MinDepth = 0,
 		MaxDepth = 1,
 	}
-	_d3d11_perm.device_ctx->RSSetViewports(1, &viewport)
+	_d3d11_state.device_ctx->RSSetViewports(1, &viewport)
 }
 
 @(private = "file")
@@ -384,8 +391,8 @@ _draw_upload_uniforms :: proc(size: [2]f32) {
 	_draw_uniforms.proj_matrix = linalg.matrix_ortho3d_f32(0, size.x, size.y, 0, 0, 1, true)
 
 	sub_rsrc: D3D11.MAPPED_SUBRESOURCE
-	hr := _d3d11_perm.device_ctx->Map(
-		_draw_perm.uniforms_buffer_gpu,
+	hr := _d3d11_state.device_ctx->Map(
+		_draw_state.uniforms_buffer_gpu,
 		0,
 		.WRITE_DISCARD,
 		{},
@@ -393,12 +400,12 @@ _draw_upload_uniforms :: proc(size: [2]f32) {
 	)
 	if windows.SUCCEEDED(hr) {
 		mem.copy(sub_rsrc.pData, &_draw_uniforms, size_of(_draw_uniforms))
-		_d3d11_perm.device_ctx->Unmap(_draw_perm.uniforms_buffer_gpu, 0)
+		_d3d11_state.device_ctx->Unmap(_draw_state.uniforms_buffer_gpu, 0)
 	}
 }
 
 @(private = "file")
-_draw_perm: struct {
+_draw_state: struct {
 	instanced_buffer_gpu: ^D3D11.IBuffer,
 	uniforms_buffer_gpu:  ^D3D11.IBuffer,
 	vshader:              D3D11_VShader,

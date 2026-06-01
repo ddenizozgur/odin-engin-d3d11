@@ -43,16 +43,16 @@ d3d11_present :: proc(swapchain: Swapchain, sync_interval := u32(0)) {
 
 d3d11_clear_default_rtv :: proc(swapchain: Swapchain, color: RGBA8) {
 	tmp_color := rgba8_to_vec4f32(color)
-	_d3d11_perm.device_ctx->ClearRenderTargetView(swapchain.default_rtv, &tmp_color)
+	_d3d11_state.device_ctx->ClearRenderTargetView(swapchain.default_rtv, &tmp_color)
 }
 
 d3d11_set_default_rtv :: proc(swapchain: ^Swapchain) {
-	_d3d11_perm.device_ctx->OMSetRenderTargets(1, &swapchain.default_rtv, nil)
+	_d3d11_state.device_ctx->OMSetRenderTargets(1, &swapchain.default_rtv, nil)
 }
 
 d3d11_resize_default_rtv :: proc(swapchain: ^Swapchain, size: [2]f32) {
 	{
-		_d3d11_perm.device_ctx->OMSetRenderTargets(0, nil, nil)
+		_d3d11_state.device_ctx->OMSetRenderTargets(0, nil, nil)
 		if swapchain.default_rtv != nil {
 			swapchain.default_rtv->Release()
 			swapchain.default_rtv = nil
@@ -66,7 +66,7 @@ d3d11_resize_default_rtv :: proc(swapchain: ^Swapchain, size: [2]f32) {
 
 		rt: ^D3D11.ITexture2D
 		swapchain.swapchain1->GetBuffer(0, D3D11.ITexture2D_UUID, cast(^rawptr)&rt)
-		_d3d11_perm.device->CreateRenderTargetView(rt, nil, &swapchain.default_rtv)
+		_d3d11_state.device->CreateRenderTargetView(rt, nil, &swapchain.default_rtv)
 		rt->Release()
 
 		d3d11_set_default_rtv(swapchain)
@@ -81,17 +81,17 @@ d3d11_resize_default_rtv :: proc(swapchain: ^Swapchain, size: [2]f32) {
 			MinDepth = 0,
 			MaxDepth = 1,
 		}
-		_d3d11_perm.device_ctx->RSSetViewports(1, &viewport)
+		_d3d11_state.device_ctx->RSSetViewports(1, &viewport)
 	}
 }
 
 d3d11_initialize :: proc() -> bool {
 	// TODO: Error enum
-	_d3d11_create_device_and_ctx(&_d3d11_perm.device, &_d3d11_perm.device_ctx) or_return
+	_d3d11_create_device_and_ctx(&_d3d11_state.device, &_d3d11_state.device_ctx) or_return
 
 	when ODIN_DEBUG {
 		debug: ^D3D11.IDebug
-		hr := _d3d11_perm.device->QueryInterface(D3D11.IDebug_UUID, cast(^rawptr)&debug)
+		hr := _d3d11_state.device->QueryInterface(D3D11.IDebug_UUID, cast(^rawptr)&debug)
 		if windows.SUCCEEDED(hr) {
 			info_queue: ^D3D11.IInfoQueue
 			hr = debug->QueryInterface(D3D11.IInfoQueue_UUID, cast(^rawptr)&info_queue)
@@ -109,9 +109,9 @@ d3d11_initialize :: proc() -> bool {
 		dxgi_device: ^DXGI.IDevice
 		dxgi_adapter: ^DXGI.IAdapter
 
-		_d3d11_perm.device->QueryInterface(DXGI.IDevice_UUID, cast(^rawptr)&dxgi_device)
+		_d3d11_state.device->QueryInterface(DXGI.IDevice_UUID, cast(^rawptr)&dxgi_device)
 		dxgi_device->GetAdapter(&dxgi_adapter)
-		dxgi_adapter->GetParent(DXGI.IFactory2_UUID, cast(^rawptr)&_d3d11_perm.dxgi_factory2)
+		dxgi_adapter->GetParent(DXGI.IFactory2_UUID, cast(^rawptr)&_d3d11_state.dxgi_factory2)
 		// dxgi_device1->SetMaximumFrameLatency(1)	// not work ??
 
 		dxgi_device->Release()
@@ -124,7 +124,7 @@ d3d11_initialize :: proc() -> bool {
 			CullMode      = .NONE, // check
 			ScissorEnable = false,
 		}
-		_d3d11_perm.device->CreateRasterizerState(&desc, &_d3d11_perm.rasterizer)
+		_d3d11_state.device->CreateRasterizerState(&desc, &_d3d11_state.rasterizer)
 	}
 
 	{ 	// Blend Alpha
@@ -139,7 +139,7 @@ d3d11_initialize :: proc() -> bool {
 			desc.RenderTarget[0].BlendOpAlpha = .ADD
 			desc.RenderTarget[0].RenderTargetWriteMask = cast(u8)D3D11.COLOR_WRITE_ENABLE_ALL
 		}
-		_d3d11_perm.device->CreateBlendState(&desc, &_d3d11_perm.blend_state)
+		_d3d11_state.device->CreateBlendState(&desc, &_d3d11_state.blend_state)
 	}
 
 	{ 	// Samplers
@@ -150,10 +150,10 @@ d3d11_initialize :: proc() -> bool {
 			AddressW       = .CLAMP,
 			ComparisonFunc = .NEVER,
 		}
-		_d3d11_perm.device->CreateSamplerState(&desc, &_d3d11_perm.samplers[.PointClamp])
+		_d3d11_state.device->CreateSamplerState(&desc, &_d3d11_state.samplers[.PointClamp])
 
 		desc.Filter = .MIN_MAG_MIP_LINEAR
-		_d3d11_perm.device->CreateSamplerState(&desc, &_d3d11_perm.samplers[.BilinearClamp])
+		_d3d11_state.device->CreateSamplerState(&desc, &_d3d11_state.samplers[.BilinearClamp])
 	}
 
 	{ 	// Depth Stencil
@@ -162,17 +162,17 @@ d3d11_initialize :: proc() -> bool {
 			DepthWriteMask = .ALL,
 			DepthFunc      = .LESS,
 		}
-		_d3d11_perm.device->CreateDepthStencilState(&desc, &_d3d11_perm.depths[.Noop])
+		_d3d11_state.device->CreateDepthStencilState(&desc, &_d3d11_state.depths[.Noop])
 
 		desc.DepthEnable = true
-		_d3d11_perm.device->CreateDepthStencilState(&desc, &_d3d11_perm.depths[.MaskAll_FuncLess])
+		_d3d11_state.device->CreateDepthStencilState(&desc, &_d3d11_state.depths[.MaskAll_FuncLess])
 	}
 
 	{ 	// First Run
-		_d3d11_perm.device_ctx->PSSetSamplers(0, 1, &_d3d11_perm.samplers[.BilinearClamp])
-		_d3d11_perm.device_ctx->RSSetState(_d3d11_perm.rasterizer)
-		_d3d11_perm.device_ctx->OMSetDepthStencilState(_d3d11_perm.depths[.Noop], 0)
-		_d3d11_perm.device_ctx->OMSetBlendState(_d3d11_perm.blend_state, nil, 0xffffffff)
+		_d3d11_state.device_ctx->PSSetSamplers(0, 1, &_d3d11_state.samplers[.BilinearClamp])
+		_d3d11_state.device_ctx->RSSetState(_d3d11_state.rasterizer)
+		_d3d11_state.device_ctx->OMSetDepthStencilState(_d3d11_state.depths[.Noop], 0)
+		_d3d11_state.device_ctx->OMSetBlendState(_d3d11_state.blend_state, nil, 0xffffffff)
 	}
 
 	return true
@@ -201,8 +201,8 @@ d3d11_create_swapchain :: proc(window: ^wm.Window) -> (swapchain: Swapchain, goo
 			Flags = swapchain.flags,
 		}
 
-		hr := _d3d11_perm.dxgi_factory2->CreateSwapChainForHwnd(
-			_d3d11_perm.device,
+		hr := _d3d11_state.dxgi_factory2->CreateSwapChainForHwnd(
+			_d3d11_state.device,
 			window.hwnd,
 			&desc,
 			nil,
@@ -214,7 +214,7 @@ d3d11_create_swapchain :: proc(window: ^wm.Window) -> (swapchain: Swapchain, goo
 			return
 		}
 
-		_d3d11_perm.dxgi_factory2->MakeWindowAssociation(window.hwnd, {.NO_ALT_ENTER})
+		_d3d11_state.dxgi_factory2->MakeWindowAssociation(window.hwnd, {.NO_ALT_ENTER})
 	}
 
 	{ 	// Waitable Obj
@@ -236,7 +236,7 @@ d3d11_create_swapchain :: proc(window: ^wm.Window) -> (swapchain: Swapchain, goo
 		// }
 		rt: ^D3D11.ITexture2D
 		swapchain.swapchain1->GetBuffer(0, D3D11.ITexture2D_UUID, cast(^rawptr)&rt)
-		_d3d11_perm.device->CreateRenderTargetView(rt, nil, &swapchain.default_rtv)
+		_d3d11_state.device->CreateRenderTargetView(rt, nil, &swapchain.default_rtv)
 		rt->Release()
 	}
 
@@ -247,7 +247,7 @@ d3d11_create_swapchain :: proc(window: ^wm.Window) -> (swapchain: Swapchain, goo
 // Privates
 //
 @(private)
-_d3d11_perm: struct {
+_d3d11_state: struct {
 	device:        ^D3D11.IDevice,
 	device_ctx:    ^D3D11.IDeviceContext,
 	dxgi_factory2: ^DXGI.IFactory2,
@@ -260,7 +260,7 @@ _d3d11_perm: struct {
 @(private = "file")
 _d3d11_is_tearing_supported :: proc() -> (is: b32) {
 	factory5: ^DXGI.IFactory5
-	hr := _d3d11_perm.dxgi_factory2->QueryInterface(DXGI.IFactory5_UUID, cast(^rawptr)&factory5)
+	hr := _d3d11_state.dxgi_factory2->QueryInterface(DXGI.IFactory5_UUID, cast(^rawptr)&factory5)
 	if windows.SUCCEEDED(hr) {
 		factory5->CheckFeatureSupport(.PRESENT_ALLOW_TEARING, &is, size_of(is))
 		factory5->Release()

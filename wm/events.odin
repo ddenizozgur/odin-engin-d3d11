@@ -43,7 +43,7 @@ key_is_released :: proc(window: ^Window, key: Key_VkCode) -> bool {
 }
 
 poll_events_this_frame :: proc() -> []Event {
-	wnd_it := list.iterator_head(_perm.window_list, Window, "node_link")
+	wnd_it := list.iterator_head(_state.window_list, Window, "node_link")
 	for wnd_it in list.iterate_next(&wnd_it) {
 		for it in Mouse_Btn {
 			down_up := wnd_it.btns_this_frame[it]
@@ -55,7 +55,7 @@ poll_events_this_frame :: proc() -> []Event {
 		}
 		wnd_it.is_resized = false
 	}
-	clear(&_perm.evnts_this_frame)
+	clear(&_state.evnts_this_frame)
 
 	msg: windows.MSG
 	for windows.PeekMessageW(&msg, nil, 0, 0, windows.PM_REMOVE) {
@@ -63,7 +63,7 @@ poll_events_this_frame :: proc() -> []Event {
 		windows.DispatchMessageW(&msg)
 	}
 
-	return _perm.evnts_this_frame[:]
+	return _state.evnts_this_frame[:]
 }
 
 @(private)
@@ -84,7 +84,7 @@ _window_proc :: proc "system" (
 	switch msg {
 	// case windows.WM_DESTROY:
 	case windows.WM_CLOSE:
-		append(&_perm.evnts_this_frame, Event_WindowClose{window})
+		append(&_state.evnts_this_frame, Event_WindowClose{window})
 
 	// TODO: WM_INPUTLANGCHANGE ??
 	// case windows.WM_ENTERSIZEMOVE:
@@ -97,9 +97,9 @@ _window_proc :: proc "system" (
 	case windows.WM_SIZE:
 		_on_resize(window, wparam, lparam)
 	case windows.WM_SETFOCUS:
-		append(&_perm.evnts_this_frame, Event_WindowFocus{window})
+		append(&_state.evnts_this_frame, Event_WindowFocus{window})
 	case windows.WM_KILLFOCUS:
-		append(&_perm.evnts_this_frame, Event_WindowUnfocus{window})
+		append(&_state.evnts_this_frame, Event_WindowUnfocus{window})
 		_release_btns(window)
 		_release_keys(window)
 
@@ -136,25 +136,25 @@ _window_proc :: proc "system" (
 	case windows.WM_MOUSEMOVE:
 		x := windows.GET_X_LPARAM(lparam)
 		y := windows.GET_Y_LPARAM(lparam)
-		append(&_perm.evnts_this_frame, Event_MouseMove{window = window, pos = {x, y}})
+		append(&_state.evnts_this_frame, Event_MouseMove{window = window, pos = {x, y}})
 
 	case windows.WM_MOUSEWHEEL:
 		vert_scroll := cast(f32)windows.GET_WHEEL_DELTA_WPARAM(wparam) / _MOUSE_SCROLL_NORMVAL // TODO: check sign
 		append(
-			&_perm.evnts_this_frame,
+			&_state.evnts_this_frame,
 			Event_MouseScroll{window = window, scroll = {0., vert_scroll}},
 		)
 	case windows.WM_MOUSEHWHEEL:
 		horz_scroll := cast(f32)windows.GET_WHEEL_DELTA_WPARAM(wparam) / _MOUSE_SCROLL_NORMVAL // TODO: check sign
 		append(
-			&_perm.evnts_this_frame,
+			&_state.evnts_this_frame,
 			Event_MouseScroll{window = window, scroll = {horz_scroll, 0.}},
 		)
 
 	case windows.WM_SYSKEYDOWN:
 		if wparam == windows.VK_F4 {
 			// return windows.DefWindowProcW(hwnd, msg, wparam, lparam)
-			append(&_perm.evnts_this_frame, Event_WindowClose{window})
+			append(&_state.evnts_this_frame, Event_WindowClose{window})
 			break
 		}
 		if wparam != windows.VK_MENU && (wparam < windows.VK_F1 || wparam > windows.VK_F24) {
@@ -195,7 +195,7 @@ _window_proc :: proc "system" (
 		}
 
 		if unicode.is_graphic(codepoint) {
-			append(&_perm.evnts_this_frame, Event_Text{window = window, utf32 = codepoint})
+			append(&_state.evnts_this_frame, Event_Text{window = window, utf32 = codepoint})
 		}
 
 	case windows.WM_ERASEBKGND:
@@ -238,7 +238,7 @@ _update_btns :: proc(window: ^Window, btn: Mouse_Btn, down_up: bool) {
 		}
 	}
 
-	append(&_perm.evnts_this_frame, Event_MouseBtn{window = window, btn = btn, down_up = down_up})
+	append(&_state.evnts_this_frame, Event_MouseBtn{window = window, btn = btn, down_up = down_up})
 }
 
 @(private = "file")
@@ -281,7 +281,7 @@ _update_keys :: proc(window: ^Window, wparam: windows.WPARAM, lparam: windows.LP
 	}
 
 	append(
-		&_perm.evnts_this_frame,
+		&_state.evnts_this_frame,
 		Event_Key {
 			window    = window,
 			vkcode    = vkcode,
@@ -299,7 +299,7 @@ _release_keys :: proc(window: ^Window) {
 		if window.keys_this_frame[vkcode] {
 			window.keys_this_frame[vkcode] = false
 			append(
-				&_perm.evnts_this_frame,
+				&_state.evnts_this_frame,
 				Event_Key {
 					window = window,
 					vkcode = vkcode,
@@ -339,14 +339,14 @@ _on_resize :: proc(window: ^Window, wparam: windows.WPARAM, lparam: windows.LPAR
 
 	switch wparam {
 	case windows.SIZE_MINIMIZED:
-		append(&_perm.evnts_this_frame, Event_WindowMinimize{window})
+		append(&_state.evnts_this_frame, Event_WindowMinimize{window})
 		window.placement_last_frame = .Minimize
 	case windows.SIZE_MAXIMIZED:
-		append(&_perm.evnts_this_frame, Event_WindowMaximize{window})
+		append(&_state.evnts_this_frame, Event_WindowMaximize{window})
 		window.placement_last_frame = .Maximize
 	case windows.SIZE_RESTORED:
 		if window.placement_last_frame != .Restore {
-			append(&_perm.evnts_this_frame, Event_WindowRestore{window})
+			append(&_state.evnts_this_frame, Event_WindowRestore{window})
 			window.placement_last_frame = .Restore
 		}
 	}

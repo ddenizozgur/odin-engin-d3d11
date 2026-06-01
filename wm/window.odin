@@ -71,7 +71,7 @@ initialize :: proc() -> bool {
 	//     icon = ExtractIconW(hInstance, exe_path.data, 0); // 0 means first icon.
 	// }
 
-	_perm.wndclass = windows.WNDCLASSW {
+	_state.wndclass = windows.WNDCLASSW {
 		lpfnWndProc   = _window_proc,
 		style         = windows.CS_VREDRAW | windows.CS_HREDRAW | windows.CS_OWNDC,
 		hInstance     = cast(windows.HINSTANCE)windows.GetModuleHandleW(nil),
@@ -81,7 +81,7 @@ initialize :: proc() -> bool {
 		lpszClassName = "WndClassName",
 	}
 
-	if windows.RegisterClassW(&_perm.wndclass) == 0 {
+	if windows.RegisterClassW(&_state.wndclass) == 0 {
 		fmt.eprintfln("[ERROR] Failed to registrate WNDCLASSW") // TODO: maybe GetLastError()
 		return false
 	}
@@ -145,7 +145,7 @@ window_alloc :: proc(
 
 		hwnd := windows.CreateWindowExW(
 			ex_style,
-			_perm.wndclass.lpszClassName,
+			_state.wndclass.lpszClassName,
 			title16,
 			dw_style,
 			xpos,
@@ -154,7 +154,7 @@ window_alloc :: proc(
 			window_h,
 			nil,
 			nil,
-			_perm.wndclass.hInstance,
+			_state.wndclass.hInstance,
 			nil,
 		)
 		// DragAcceptFiles(_hwnd, TRUE);
@@ -176,7 +176,7 @@ window_alloc :: proc(
 					size_last_frame = {client_w, client_h},
 				},
 			)
-			list.push_back(&_perm.window_list, &window.node_link)
+			list.push_back(&_state.window_list, &window.node_link)
 		}
 
 		windows.ShowWindow(hwnd, windows.SW_SHOW)
@@ -187,7 +187,7 @@ window_alloc :: proc(
 }
 
 // window_free :: proc(window: ^Window) {
-// 	list.remove(&_perm.window_list, &window.node_link)
+// 	list.remove(&_state.window_list, &window.node_link)
 // 	// windows.ReleaseDC(_hwnd, _hdc)
 // 	windows.DestroyWindow(window.hwnd)
 // }
@@ -201,7 +201,7 @@ window_alloc :: proc(
 //
 @(private)
 _find_window_from_hwnd :: proc(hwnd: windows.HWND) -> ^Window {
-	it := list.iterator_head(_perm.window_list, Window, "node_link")
+	it := list.iterator_head(_state.window_list, Window, "node_link")
 	for it in list.iterate_next(&it) {
 		if it.hwnd == hwnd {
 			return it
@@ -211,7 +211,7 @@ _find_window_from_hwnd :: proc(hwnd: windows.HWND) -> ^Window {
 }
 
 @(private)
-_perm: struct {
+_state: struct {
 	window_list:      list.List,
 	wndclass:         windows.WNDCLASSW,
 	evnts_this_frame: [dynamic]Event,

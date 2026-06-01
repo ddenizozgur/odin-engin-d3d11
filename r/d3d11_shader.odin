@@ -45,7 +45,7 @@ d3d11_vshader_init :: proc(
 		fmt.eprintfln("[ERROR] Failed to compile vshader\n%s", msg)
 		return false
 	} else {
-		_d3d11_perm.device->CreateVertexShader(
+		_d3d11_state.device->CreateVertexShader(
 			vshader_blob->GetBufferPointer(),
 			vshader_blob->GetBufferSize(),
 			nil,
@@ -54,7 +54,7 @@ d3d11_vshader_init :: proc(
 	}
 
 	// Input Layout
-	hr = _d3d11_perm.device->CreateInputLayout(
+	hr = _d3d11_state.device->CreateInputLayout(
 		raw_data(ilayout_desc),
 		cast(u32)len(ilayout_desc),
 		vshader_blob->GetBufferPointer(),
@@ -97,7 +97,7 @@ d3d11_pshader_init :: proc(src: string, dbg_name: cstring, out: ^^D3D11.IPixelSh
 		fmt.eprintfln("[ERROR] Failed to compile pshader\n%s", msg)
 		return false
 	} else {
-		_d3d11_perm.device->CreatePixelShader(
+		_d3d11_state.device->CreatePixelShader(
 			pshader_blob->GetBufferPointer(),
 			pshader_blob->GetBufferSize(),
 			nil,
@@ -121,7 +121,7 @@ d3d11_uniforms_init :: proc($T: typeid, out: ^^D3D11.IBuffer) -> bool {
 		CPUAccessFlags = {.WRITE},
 	}
 
-	hr := _d3d11_perm.device->CreateBuffer(&desc, nil, out)
+	hr := _d3d11_state.device->CreateBuffer(&desc, nil, out)
 	if windows.FAILED(hr) {
 		fmt.eprintfln("[ERROR] Failed to create uniform buffer")
 		return false
