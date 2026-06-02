@@ -17,12 +17,18 @@ UI_SizePerAxis :: union {
 	UI_SizePerAxis_ChildrenSum,
 }
 
+UI_Axis :: enum {
+	Horz,
+	Vert,
+}
+
 UI_Widget_Flag :: enum {
 	HasBg,
+	HasHoverBg,
 	HasBorder,
 	HasText,
 	Clickable,
-	FillWidth,
+	FillParent, // Fills opposite UI_Axis from parent
 }
 UI_Widget_Flags :: bit_set[UI_Widget_Flag]
 
@@ -40,6 +46,7 @@ UI_Widget :: struct {
 	flags:         UI_Widget_Flags,
 	pref_size:     [2]UI_SizePerAxis,
 	text:          string,
+	layout_axis:   UI_Axis,
 	//
 	key:           u64,
 	solved:        UI_Widget_Solved,
@@ -86,7 +93,7 @@ ui_begin_frame :: proc() {
 }
 ui_end_frame :: proc() {
 	root := _ui_state.parent_stack[0]
-	ui_solve_vertical(root)
+	ui_solve_layout(root)
 	ui_draw_tree(root)
 
 	clear(&_ui_state.solved_last_frame)
@@ -101,6 +108,7 @@ ui_build_widget :: proc(
 	text: string,
 	flags: UI_Widget_Flags,
 	pref_size: [2]UI_SizePerAxis,
+	layout_axis := UI_Axis.Vert,
 ) -> (
 	^UI_Widget,
 	UI_Action,
@@ -114,6 +122,7 @@ ui_build_widget :: proc(
 			flags = flags,
 			pref_size = pref_size,
 			text = ui_display_part_from_text(text),
+			layout_axis = layout_axis,
 			key = key,
 		},
 	)
@@ -150,40 +159,40 @@ UI_Theme :: enum {
 }
 ui_theme := [UI_Theme][4]RGBA8 {
 	.PanelBg           = {
-		RGBA8{22, 34, 54, 190},
-		RGBA8{22, 34, 54, 190},
-		RGBA8{11, 18, 31, 190},
-		RGBA8{11, 18, 31, 190},
+		RGBA8{17, 23, 34, 248},
+		RGBA8{22, 30, 44, 248},
+		RGBA8{10, 15, 24, 248},
+		RGBA8{13, 19, 30, 248},
 	},
-	.PanelBorder       = RGBA8{58, 92, 122, 255},
+	.PanelBorder       = RGBA8{48, 64, 88, 230},
 	.ButtonBg          = {
-		RGBA8{15, 23, 38, 190},
-		RGBA8{15, 23, 38, 190},
-		RGBA8{15, 23, 38, 190},
-		RGBA8{15, 23, 38, 190},
+		RGBA8{31, 41, 58, 252},
+		RGBA8{36, 48, 68, 252},
+		RGBA8{21, 29, 43, 252},
+		RGBA8{25, 35, 51, 252},
 	},
 	.ButtonHoverBg     = {
-		RGBA8{43, 82, 116, 190},
-		RGBA8{43, 82, 116, 190},
-		RGBA8{24, 57, 91, 190},
-		RGBA8{24, 57, 91, 190},
+		RGBA8{40, 65, 101, 255},
+		RGBA8{48, 78, 121, 255},
+		RGBA8{25, 45, 74, 255},
+		RGBA8{32, 56, 90, 255},
 	},
 	.ButtonPressedBg   = {
-		RGBA8{18, 42, 68, 215},
-		RGBA8{18, 42, 68, 215},
-		RGBA8{18, 42, 68, 215},
-		RGBA8{18, 42, 68, 215},
+		RGBA8{23, 43, 71, 255},
+		RGBA8{29, 55, 90, 255},
+		RGBA8{14, 28, 49, 255},
+		RGBA8{19, 37, 62, 255},
 	},
-	.ButtonHoverBorder = RGBA8{80, 185, 255, 255},
-	.Text              = RGBA8{232, 244, 255, 255},
-	.TextMuted         = RGBA8{156, 181, 204, 255},
+	.ButtonHoverBorder = RGBA8{94, 143, 214, 255},
+	.Text              = RGBA8{229, 237, 248, 255},
+	.TextMuted         = RGBA8{147, 160, 179, 255},
 }
 
 ui_draw_tree :: proc(w: ^UI_Widget) {
 	hovered := point_within_rect(_ui_state.mouse_pos, w.solved.pos, w.solved.size)
 	down := .Clickable in w.flags && hovered && wm.mouse_is_down(_ui_state.window, .Left)
 
-	if .HasBg in w.flags {
+	if .HasBg in w.flags || (.HasHoverBg in w.flags && (hovered || down)) {
 		bgcol := ui_theme[.PanelBg]
 
 		if .Clickable in w.flags {
@@ -234,7 +243,38 @@ ui_draw_tree :: proc(w: ^UI_Widget) {
 UI_GAP :: f32(4)
 UI_PAD :: [2]f32{6, 2}
 
-ui_measure_children_vertical :: proc(parent: ^UI_Widget) -> (res: [2]f32) {
+ui_solve_children_layout :: proc(parent: ^UI_Widget) -> (res: [2]f32) {
+	child_cnt := 0
+
+	it := list.iterator_head(parent.children_list, UI_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		child_size := ui_get_pref_size(child)
+
+		switch parent.layout_axis {
+		case .Horz:
+			res.x += child_size.x
+			res.y = max(res.y, child_size.y)
+		case .Vert:
+			res.x = max(res.x, child_size.x)
+			res.y += child_size.y
+		}
+
+		child_cnt += 1
+	}
+
+	if child_cnt > 1 {
+		switch parent.layout_axis {
+		case .Horz:
+			res.x += UI_GAP * f32(child_cnt - 1)
+		case .Vert:
+			res.y += UI_GAP * f32(child_cnt - 1)
+		}
+	}
+
+	return res
+}
+/*
+ui_solve_children_vert :: proc(parent: ^UI_Widget) -> (res: [2]f32) {
 	child_cnt := 0
 
 	it := list.iterator_head(parent.children_list, UI_Widget, "sibling_link")
@@ -251,28 +291,55 @@ ui_measure_children_vertical :: proc(parent: ^UI_Widget) -> (res: [2]f32) {
 
 	return res
 }
+ui_solve_children_horz :: proc(parent: ^UI_Widget) -> (res: [2]f32) {
+	child_cnt := 0
 
-ui_get_pref_size :: proc(w: ^UI_Widget) -> [2]f32 {
-	ui_pad := UI_PAD
-	size: [2]f32
-
-	for axis in 0 ..< 2 {
-		switch s in w.pref_size[axis] {
-		case UI_SizePerAxis_HardCoded:
-			size[axis] = f32(s)
-
-		case UI_SizePerAxis_TextContent:
-			bbox := text_bbox(_ui_state.font, w.text, _ui_state.font_size)
-			size[axis] = bbox[axis] + ui_pad[axis] * 2
-
-		case UI_SizePerAxis_ChildrenSum:
-			size[axis] = ui_measure_children_vertical(w)[axis] + UI_GAP * 2
-		}
+	it := list.iterator_head(parent.children_list, UI_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		child_size := ui_get_pref_size(child)
+		res.x += child_size.x
+		res.y = max(res.y, child_size.y)
+		child_cnt += 1
 	}
 
-	return size
+	if child_cnt > 1 {
+		res.x += UI_GAP * f32(child_cnt - 1)
+	}
+
+	return res
+}
+*/
+
+ui_solve_layout :: proc(parent: ^UI_Widget) {
+	cursor := parent.solved.pos + UI_GAP
+
+	it := list.iterator_head(parent.children_list, UI_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		final_size := ui_get_pref_size(child)
+		if .FillParent in child.flags {
+			switch parent.layout_axis {
+			case .Horz:
+				final_size.y = parent.solved.size.y - UI_GAP * 2
+			case .Vert:
+				final_size.x = parent.solved.size.x - UI_GAP * 2
+			}
+		}
+
+		child.solved.pos = cursor
+		child.solved.size = final_size
+
+		ui_solve_layout(child)
+
+		switch parent.layout_axis {
+		case .Horz:
+			cursor.x += final_size.x + UI_GAP
+		case .Vert:
+			cursor.y += final_size.y + UI_GAP
+		}
+	}
 }
 
+/*
 ui_solve_vertical :: proc(parent: ^UI_Widget) {
 	cursor := parent.solved.pos + UI_GAP
 
@@ -289,6 +356,45 @@ ui_solve_vertical :: proc(parent: ^UI_Widget) {
 		ui_solve_vertical(child)
 		cursor.y += final_size.y + UI_GAP
 	}
+}
+ui_solve_horizontal :: proc(parent: ^UI_Widget) {
+	cursor := parent.solved.pos + UI_GAP
+
+	it := list.iterator_head(parent.children_list, UI_Widget, "sibling_link")
+	for child in list.iterate_next(&it) {
+		final_size := ui_get_pref_size(child)
+		// if .FillWidth in child.flags {
+		// 	final_size.x = parent.solved.size.x - UI_GAP * 2
+		// }
+
+		child.solved.pos = cursor
+		child.solved.size = final_size
+
+		ui_solve_horizontal(child)
+		cursor.x += final_size.x + UI_GAP
+	}
+}
+*/
+
+ui_get_pref_size :: proc(w: ^UI_Widget) -> [2]f32 {
+	ui_pad := UI_PAD
+	size: [2]f32
+
+	for axis in 0 ..< 2 {
+		switch s in w.pref_size[axis] {
+		case UI_SizePerAxis_HardCoded:
+			size[axis] = f32(s)
+
+		case UI_SizePerAxis_TextContent:
+			bbox := text_bbox(_ui_state.font, w.text, _ui_state.font_size)
+			size[axis] = bbox[axis] + ui_pad[axis] * 2
+
+		case UI_SizePerAxis_ChildrenSum:
+			size[axis] = ui_solve_children_layout(w)[axis] + UI_GAP * 2
+		}
+	}
+
+	return size
 }
 
 ui_store_solved_tree :: proc(w: ^UI_Widget) {
@@ -367,6 +473,7 @@ ui_build_root :: proc() -> ^UI_Widget {
 			flags = {},
 			pref_size = UI_SizePerAxis_HardCoded(0),
 			text = "",
+			layout_axis = .Vert,
 			key = ui_key_from_text("###root"),
 			solved = {pos = 0, size = wm.get_client_size_2f32(_ui_state.window) or_else {}},
 		},

@@ -31,9 +31,9 @@ to_initialize :: proc() -> bool {
 	swapchain = r.d3d11_create_swapchain(window) or_return
 	r.draw_initialize() or_return
 
-	// some_font2 = font_load("rsrc/font/SourceSans3-Regular.ttf") or_return
-	some_font2 = font_load("rsrc/font/Inter-Regular.ttf") or_return
-	// some_font = font_load("rsrc/font/Inter-Medium.ttf") or_return
+	some_font2 = font_load("rsrc/font/SourceSans3-Regular.ttf") or_return
+	// some_font2 = font_load("rsrc/font/Inter-Regular.ttf") or_return
+	// some_font2 = font_load("rsrc/font/Inter-Medium.ttf") or_return
 	some_font = font_load("rsrc/font/VarelaRound-Regular.ttf") or_return
 
 	r.ui_initialize(window, some_font2, 15)
@@ -64,7 +64,7 @@ to_render :: proc(dt: f32) {
 		draw_fps(some_font, {client_size.x, 0}, 20, dt, .TopRight)
 	}
 
-	r.d3d11_present(swapchain, 1)
+	r.d3d11_present(swapchain)
 }
 
 main :: proc() {
