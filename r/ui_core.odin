@@ -41,17 +41,15 @@ UI_Bucket_Flag :: enum {
 }
 UI_Bucket_Flags :: bit_set[UI_Bucket_Flag]
 
-UI_Box_Kind :: enum {
-	Bucket,
-	Widget,
-}
-
 UI_Box :: struct {
-	kind:         UI_Box_Kind,
+	kind:         enum {
+		Bucket,
+		Widget,
+	},
 	parent:       ^UI_Box,
 	sibling_link: list.Node,
 	flags:        UI_Box_Flags,
-	text:         string,	// TODO: move to widget ??
+	text:         string, // TODO: move to widget ??
 	key:          u64,
 	solved:       UI_Box_Solved,
 	data:         struct #raw_union {
@@ -153,7 +151,7 @@ ui_build_bucket :: proc(
 	if solved, good := _ui_state.solved_last_frame[key]; good {
 		hovered := point_within_rect(_ui_state.mouse_pos, solved.pos, solved.size)
 
-		return UI_Action { 	// TODO: implement UI_Widget_Flags interaction
+		return UI_Action { 	// TODO: implement UI_Box_Flags interaction
 			box     = box,
 			hovered = hovered,
 			pressed = hovered && wm.mouse_is_pressed(_ui_state.window, .Left),
@@ -187,7 +185,7 @@ ui_build_widget :: proc(
 	if solved, good := _ui_state.solved_last_frame[key]; good {
 		hovered := point_within_rect(_ui_state.mouse_pos, solved.pos, solved.size)
 
-		return UI_Action { 	// TODO: implement UI_Widget_Flags interaction
+		return UI_Action { 	// TODO: implement UI_Box_Flags interaction
 			box     = box,
 			hovered = hovered,
 			pressed = hovered && wm.mouse_is_pressed(_ui_state.window, .Left),
@@ -271,8 +269,8 @@ ui_draw_tree :: proc(box: ^UI_Box) {
 
 			inner_pos := box.solved.pos + UI_BORDER_SIZE
 			inner_size := box.solved.size - UI_BORDER_SIZE * 2
-			inner_size.x = max(inner_size.x, f32(0))
-			inner_size.y = max(inner_size.y, f32(0))
+			inner_size.x = max(inner_size.x, 0)
+			inner_size.y = max(inner_size.y, 0)
 
 			draw_rect(inner_pos, inner_size, bgcol, max(UI_CRADII - UI_BORDER_SIZE, f32(0)))
 		} else {

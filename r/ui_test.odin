@@ -24,7 +24,7 @@ ui_panel :: proc(
 	text: string,
 	layout_axis := UI_Axis.Vertical,
 	box_flags: UI_Box_Flags = {.HasBg, .HasBorder},
-	bucket_flags: UI_Bucket_Flags = {.HasPadding},
+	bucket_flags: UI_Bucket_Flags = {},
 	pref_size: [2]UI_BucketSize = UI_Size_ChildrenSum{},
 ) -> UI_Action {
 	return ui_build_bucket(text, box_flags, bucket_flags, pref_size, layout_axis)
@@ -53,13 +53,14 @@ ui_to_test :: proc() {
 	UI_FRAME_SCOPED()
 
 	{
-		UI_PARENT_SCOPED(ui_panel("laloli").box)
+		UI_PARENT_SCOPED(ui_panel("###demo_root").box)
 
 		{
 			UI_PARENT_SCOPED(ui_row("###menu_bar", {.HasBg, .HasBorder}, {.HasPadding}).box)
 			ui_menu_button("File")
 			ui_menu_button("Edit")
 			ui_menu_button("View")
+			ui_menu_button("Run")
 		}
 
 		{
@@ -83,7 +84,7 @@ ui_to_test :: proc() {
 
 			{
 				UI_PARENT_SCOPED(ui_panel("###right_panel").box)
-				ui_label("Buckets")
+				ui_label("Layout")
 
 				{
 					UI_PARENT_SCOPED(ui_row("###button_row", {}, {.HasPadding}).box)
