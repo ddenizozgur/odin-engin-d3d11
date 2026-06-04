@@ -1,110 +1,68 @@
 package r
 
-ui_label :: proc(text: string) -> UI_Action {
-	return ui_build_widget(text, {.HasText}, UI_Size_TextContent{})
-}
-
+import "core:flags"
 ui_button :: proc(text: string) -> UI_Action {
-	return ui_build_widget(text, {.HasText, .HasBg, .HasBorder, .Clickable}, UI_Size_TextContent{})
-}
-
-ui_menu_button :: proc(text: string) -> UI_Action {
-	return ui_build_widget(text, {.HasText, .HasHoverBg, .Clickable}, UI_Size_TextContent{})
-}
-
-ui_menu_item :: proc(text: string) -> UI_Action {
 	return ui_build_widget(
 		text,
-		{.HasText, .HasHoverBg, .Clickable, .FillParent},
+		{.HasBg, .HasHoverBg, .HasText, .Clickable},
+		UI_Size_TextContent{},
+	)
+}
+ui_menu_button :: proc(text: string) -> UI_Action {
+	return ui_build_widget(
+		text,
+		{.HasHoverBg, .HasText, .Clickable, .FillParent},
 		UI_Size_TextContent{},
 	)
 }
 
+ui_label :: proc(text: string) -> UI_Action {
+	return ui_build_widget(text, {.HasText}, UI_Size_TextContent{})
+}
+
 ui_panel :: proc(
-	text: string,
-	layout_axis := UI_Axis.Vertical,
-	box_flags: UI_Box_Flags = {.HasBg, .HasBorder},
+	id: string,
+	flags: UI_Box_Flags = {.HasBg, .HasBorder},
 	bucket_flags: UI_Bucket_Flags = {},
-	pref_size: [2]UI_BucketSize = UI_Size_ChildrenSum{},
-) -> UI_Action {
-	return ui_build_bucket(text, box_flags, bucket_flags, pref_size, layout_axis)
-}
-
-ui_row :: proc(
-	text: string,
-	box_flags: UI_Box_Flags = {},
-	bucket_flags: UI_Bucket_Flags = {},
-	pref_size: [2]UI_BucketSize = UI_Size_ChildrenSum{},
-) -> UI_Action {
-	return ui_build_bucket(text, box_flags, bucket_flags, pref_size, .Horizontal)
-}
-
-ui_overlay_panel :: proc(
-	text: string,
 	layout_axis := UI_Axis.Vertical,
-	box_flags: UI_Box_Flags = {.HasBg, .HasBorder},
-	bucket_flags: UI_Bucket_Flags = {.Overlay, .HasPadding},
-	pref_size: [2]UI_BucketSize = UI_Size_ChildrenSum{},
 ) -> UI_Action {
-	return ui_build_bucket(text, box_flags, bucket_flags, pref_size, layout_axis)
+	return ui_build_bucket(id, flags, bucket_flags, UI_Size_ChildrenSum{}, layout_axis)
+}
+ui_row :: proc(id: string) -> ^UI_Box {
+	return ui_panel(id, flags = {}, layout_axis = .Vertical).box
+}
+ui_overlay :: proc(id: string, layout_axis := UI_Axis.Vertical) -> ^UI_Box {
+	return ui_panel(id, bucket_flags = {.Overlay}, layout_axis = layout_axis).box
 }
 
 ui_to_test :: proc() {
 	UI_FRAME_SCOPED()
 
 	{
-		UI_PARENT_SCOPED(ui_panel("###demo_root").box)
+		UI_PARENT_SCOPED(ui_panel("###menu", layout_axis = .Horizontal).box)
 
+		ui_label("Kralsın")
 		{
-			UI_PARENT_SCOPED(ui_row("###menu_bar", {.HasBg, .HasBorder}, {.HasPadding}).box)
-			ui_menu_button("File")
-			ui_menu_button("Edit")
-			ui_menu_button("View")
-			ui_menu_button("Run")
-		}
+			UI_PARENT_SCOPED(ui_row("###file_menu"))
 
-		{
-			UI_PARENT_SCOPED(ui_row("###content", {}, {.HasPadding}).box)
+			if ui_menu_button("File").hovered {
+				UI_PARENT_SCOPED(ui_overlay("###tmp"))
 
-			{
-				UI_PARENT_SCOPED(ui_panel("###left_panel").box)
-				ui_label("Widgets")
-
-				button := ui_button("Button")
-				if button.hovered {
-					ui_label("Hovered")
-				}
-
-				ui_build_widget(
-					"Fill parent",
-					{.HasText, .HasBg, .HasBorder, .Clickable, .FillParent},
-					UI_Size_TextContent{},
-				)
-			}
-
-			{
-				UI_PARENT_SCOPED(ui_panel("###right_panel").box)
-				ui_label("Layout")
-
-				{
-					UI_PARENT_SCOPED(ui_row("###button_row", {}, {.HasPadding}).box)
-					ui_button("One")
-					ui_button("Two")
-					ui_button("Three")
-				}
-
-				{
-					UI_PARENT_SCOPED(ui_panel("###overlay_anchor").box)
-					ui_label("Overlay anchor")
-
-					{
-						UI_PARENT_SCOPED(ui_overlay_panel("###overlay").box)
-						ui_menu_item("Overlay A")
-						ui_menu_item("Overlay B")
-						ui_menu_item("Overlay C")
-					}
-				}
+				ui_menu_button("Baba tilifon")
+				ui_menu_button("Hannamuho")
 			}
 		}
+		{
+			UI_PARENT_SCOPED(ui_row("###file_menu"))
+
+			if ui_menu_button("View").hovered {
+				UI_PARENT_SCOPED(ui_overlay("###tmp"))
+
+				ui_menu_button("Baba tilifon vs john")
+				ui_menu_button("kelalaka")
+			}
+		}
+		ui_menu_button("Tools")
+		ui_menu_button("Help")
 	}
 }

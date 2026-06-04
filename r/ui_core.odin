@@ -41,18 +41,20 @@ UI_Bucket_Flag :: enum {
 }
 UI_Bucket_Flags :: bit_set[UI_Bucket_Flag]
 
+UI_Box_Kind :: enum {
+	Bucket,
+	Widget,
+}
+
 UI_Box :: struct {
-	kind:         enum {
-		Bucket,
-		Widget,
-	},
+	kind:         UI_Box_Kind,
 	parent:       ^UI_Box,
 	sibling_link: list.Node,
 	flags:        UI_Box_Flags,
 	text:         string, // TODO: move to widget ??
 	key:          u64,
 	solved:       UI_Box_Solved,
-	data:         struct #raw_union {
+	using _:      struct #raw_union {
 		bucket: struct {
 			children_list: list.List,
 			flags:         UI_Bucket_Flags,
@@ -73,7 +75,7 @@ UI_Box_Solved :: struct {
 UI_Action :: struct {
 	box:     ^UI_Box,
 	hovered: bool,
-	pressed: bool,
+	down:    bool,
 	clicked: bool,
 }
 
@@ -89,9 +91,11 @@ ui_initialize :: proc(window: ^wm.Window, font: Font, font_size: f32) -> bool {
 	}
 
 	{
-		allocator := virtual.arena_allocator(&_ui_state.arena)
 		// _ui_state.key_occur = make(map[u64]int, allocator = allocator)
-		_ui_state.solved_last_frame = make(map[u64]UI_Box_Solved, allocator = allocator)
+		// _ui_state.solved_last_frame = make(
+		// 	map[u64]UI_Box_Solved,
+		// 	allocator = virtual.arena_allocator(&_ui_state.arena),
+		// )
 
 		_ui_state.font = font
 		_ui_state.font_size = font_size
@@ -114,10 +118,16 @@ ui_begin_frame :: proc() {
 ui_end_frame :: proc() {
 	root := _ui_state.parent_stack[0]
 	ui_solve_layout(root)
+	{
+		_ui_state.hot_key = root.key
+		_ui_state.down_key = root.key
+		_ui_state.clicked_key = root.key
+		ui_action_pass(root)
+	}
 	ui_draw_tree(root)
 
-	clear(&_ui_state.solved_last_frame)
-	ui_store_solved_tree(root)
+	// clear(&_ui_state.solved_last_frame)
+	// ui_store_solved_tree(root)
 }
 @(deferred_out = ui_end_frame)
 UI_FRAME_SCOPED :: #force_inline proc() {
@@ -141,13 +151,18 @@ ui_build_bucket :: proc(
 			flags = box_flags,
 			text = ui_display_part_from_text(text),
 			key = key,
-			data = {
-				bucket = {flags = bucket_flags, pref_size = pref_size, layout_axis = layout_axis},
-			},
+			bucket = {flags = bucket_flags, pref_size = pref_size, layout_axis = layout_axis},
 		},
 	)
 	ui_link_child(parent, box)
 
+	return UI_Action {
+		box = box,
+		hovered = box.key == _ui_state.hot_key,
+		down = box.key == _ui_state.down_key,
+		clicked = box.key == _ui_state.clicked_key,
+	}
+	/*
 	if solved, good := _ui_state.solved_last_frame[key]; good {
 		hovered := point_within_rect(_ui_state.mouse_pos, solved.pos, solved.size)
 
@@ -158,8 +173,7 @@ ui_build_bucket :: proc(
 			clicked = hovered && wm.mouse_is_released(_ui_state.window, .Left),
 		}
 	}
-
-	return UI_Action{box = box}
+	*/
 }
 
 ui_build_widget :: proc(
@@ -177,23 +191,29 @@ ui_build_widget :: proc(
 			flags = flags,
 			text = ui_display_part_from_text(text),
 			key = key,
-			data = {widget = {pref_size = pref_size}},
+			widget = {pref_size = pref_size},
 		},
 	)
 	ui_link_child(parent, box)
 
+	return UI_Action {
+		box = box,
+		hovered = box.key == _ui_state.hot_key,
+		down = box.key == _ui_state.down_key,
+		clicked = box.key == _ui_state.clicked_key,
+	}
+	/*
 	if solved, good := _ui_state.solved_last_frame[key]; good {
 		hovered := point_within_rect(_ui_state.mouse_pos, solved.pos, solved.size)
 
-		return UI_Action { 	// TODO: implement UI_Box_Flags interaction
+		return UI_Action { 	// TODO: UI_Box_Flags interaction
 			box     = box,
 			hovered = hovered,
 			pressed = hovered && wm.mouse_is_pressed(_ui_state.window, .Left),
 			clicked = hovered && wm.mouse_is_released(_ui_state.window, .Left),
 		}
 	}
-
-	return UI_Action{box = box}
+	*/
 }
 
 //
@@ -243,9 +263,9 @@ ui_theme := [UI_Theme][4]RGBA8 {
 	.TextMuted         = RGBA8{147, 160, 179, 255},
 }
 
-ui_draw_tree :: proc(box: ^UI_Box) {
-	hovered := point_within_rect(_ui_state.mouse_pos, box.solved.pos, box.solved.size)
-	down := .Clickable in box.flags && hovered && wm.mouse_is_down(_ui_state.window, .Left)
+ui_draw_box :: proc(box: ^UI_Box) {
+	hovered := box.key == _ui_state.hot_key
+	down := box.key == _ui_state.down_key
 
 	if .HasBg in box.flags || (.HasHoverBg in box.flags && (hovered || down)) {
 		bgcol := ui_theme[.PanelBg]
@@ -291,11 +311,64 @@ ui_draw_tree :: proc(box: ^UI_Box) {
 			text_color,
 		)
 	}
-
+}
+/*
+ui_draw_tree :: proc(box: ^UI_Box) {
+	ui_draw_box(box)
 	if box.kind == .Bucket {
-		it := list.iterator_head(box.data.bucket.children_list, UI_Box, "sibling_link")
+		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
 		for child in list.iterate_next(&it) {
 			ui_draw_tree(child)
+		}
+	}
+}
+*/
+ui_draw_tree :: proc(box: ^UI_Box) {
+	ui_draw_box(box)
+
+	if box.kind == .Bucket {
+		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+		for child in list.iterate_next(&it) {
+			if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
+				ui_draw_tree(child)
+			}
+		}
+
+		it = list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+		for child in list.iterate_next(&it) {
+			if child.kind == .Bucket && .Overlay in child.bucket.flags {
+				ui_draw_tree(child)
+			}
+		}
+	}
+}
+
+//
+// Action Pass
+//
+ui_action_pass :: proc(box: ^UI_Box) {
+	hovered := point_within_rect(_ui_state.mouse_pos, box.solved.pos, box.solved.size)
+	if hovered {
+		_ui_state.hot_key = box.key
+		if .Clickable in box.flags {
+			if wm.mouse_is_down(_ui_state.window, .Left) {_ui_state.down_key = box.key}
+			if wm.mouse_is_released(_ui_state.window, .Left) {_ui_state.clicked_key = box.key}
+		}
+	}
+
+	if box.kind == .Bucket {
+		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+		for child in list.iterate_next(&it) {
+			if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
+				ui_action_pass(child)
+			}
+		}
+
+		it = list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+		for child in list.iterate_next(&it) {
+			if child.kind == .Bucket && .Overlay in child.bucket.flags {
+				ui_action_pass(child)
+			}
 		}
 	}
 }
@@ -309,17 +382,17 @@ UI_PAD :: [2]f32{6, 2}
 ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 	child_cnt := 0
 
-	it := list.iterator_head(parent.data.bucket.children_list, UI_Box, "sibling_link")
+	it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
 	for child in list.iterate_next(&it) {
 		if child.kind == .Bucket {
-			if .Overlay in child.data.bucket.flags {
+			if .Overlay in child.bucket.flags {
 				continue
 			}
 		}
 
 		child_size := ui_get_pref_size(child)
 
-		switch parent.data.bucket.layout_axis {
+		switch parent.bucket.layout_axis {
 		case .Horizontal:
 			res.x += child_size.x
 			res.y = max(res.y, child_size.y)
@@ -331,8 +404,8 @@ ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 		child_cnt += 1
 	}
 
-	if .HasPadding in parent.data.bucket.flags && child_cnt > 1 {
-		switch parent.data.bucket.layout_axis {
+	if .HasPadding in parent.bucket.flags && child_cnt > 1 {
+		switch parent.bucket.layout_axis {
 		case .Horizontal:
 			res.x += UI_GAP * f32(child_cnt - 1)
 		case .Vertical:
@@ -345,19 +418,19 @@ ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 
 ui_solve_layout :: proc(parent: ^UI_Box) {
 	padding := f32(0)
-	if .HasPadding in parent.data.bucket.flags {
+	if .HasPadding in parent.bucket.flags {
 		padding = UI_GAP
 	}
 
 	cursor := parent.solved.pos + padding
 
-	it := list.iterator_head(parent.data.bucket.children_list, UI_Box, "sibling_link")
+	it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
 	for child in list.iterate_next(&it) {
 		final_size := ui_get_pref_size(child)
 
-		if child.kind == .Bucket && .Overlay in child.data.bucket.flags {
+		if child.kind == .Bucket && .Overlay in child.bucket.flags {
 			if .FillParent in child.flags {
-				switch parent.data.bucket.layout_axis {
+				switch parent.bucket.layout_axis {
 				case .Horizontal:
 					final_size.y = parent.solved.size.y - padding * 2
 				case .Vertical:
@@ -373,7 +446,7 @@ ui_solve_layout :: proc(parent: ^UI_Box) {
 		}
 
 		if .FillParent in child.flags {
-			switch parent.data.bucket.layout_axis {
+			switch parent.bucket.layout_axis {
 			case .Horizontal:
 				final_size.y = parent.solved.size.y - padding * 2
 			case .Vertical:
@@ -388,7 +461,7 @@ ui_solve_layout :: proc(parent: ^UI_Box) {
 			ui_solve_layout(child)
 		}
 
-		switch parent.data.bucket.layout_axis {
+		switch parent.bucket.layout_axis {
 		case .Horizontal:
 			cursor.x += final_size.x + padding
 		case .Vertical:
@@ -397,28 +470,28 @@ ui_solve_layout :: proc(parent: ^UI_Box) {
 	}
 }
 
-ui_get_pref_size :: proc(w: ^UI_Box) -> [2]f32 {
+ui_get_pref_size :: proc(box: ^UI_Box) -> [2]f32 {
 	ui_pad := UI_PAD
 	size: [2]f32
 
 	for axis in 0 ..< 2 {
-		switch w.kind {
+		switch box.kind {
 		case .Bucket:
-			switch s in w.data.bucket.pref_size[axis] {
+			switch s in box.bucket.pref_size[axis] {
 			case UI_Size_HardCoded:
 				size[axis] = f32(s)
 			case UI_Size_ChildrenSum:
-				size[axis] = ui_solve_children_layout(w)[axis]
-				if .HasPadding in w.data.bucket.flags {
+				size[axis] = ui_solve_children_layout(box)[axis]
+				if .HasPadding in box.bucket.flags {
 					size[axis] += UI_GAP * 2
 				}
 			}
 		case .Widget:
-			switch s in w.data.widget.pref_size[axis] {
+			switch s in box.widget.pref_size[axis] {
 			case UI_Size_HardCoded:
 				size[axis] = f32(s)
 			case UI_Size_TextContent:
-				bbox := text_bbox(_ui_state.font, w.text, _ui_state.font_size)
+				bbox := text_bbox(_ui_state.font, box.text, _ui_state.font_size)
 				size[axis] = bbox[axis] + ui_pad[axis] * 2
 			}
 		}
@@ -426,16 +499,17 @@ ui_get_pref_size :: proc(w: ^UI_Box) -> [2]f32 {
 
 	return size
 }
-
-ui_store_solved_tree :: proc(w: ^UI_Box) {
-	_ui_state.solved_last_frame[w.key] = w.solved
-	if w.kind == .Bucket {
-		it := list.iterator_head(w.data.bucket.children_list, UI_Box, "sibling_link")
+/*
+ui_store_solved_tree :: proc(box: ^UI_Box) {
+	_ui_state.solved_last_frame[box.key] = box.solved
+	if box.kind == .Bucket {
+		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
 		for child in list.iterate_next(&it) {
 			ui_store_solved_tree(child)
 		}
 	}
 }
+*/
 
 //
 // UI_Key
@@ -459,7 +533,7 @@ ui_key_from_text :: proc(text: string, seed := u64(0xcbf29ce484222325)) -> u64 {
 @(private)
 ui_link_child :: proc(parent, child: ^UI_Box) {
 	child.parent = parent
-	list.push_back(&parent.data.bucket.children_list, &child.sibling_link)
+	list.push_back(&parent.bucket.children_list, &child.sibling_link)
 }
 ui_top_parent :: proc() -> ^UI_Box {
 	top := len(_ui_state.parent_stack) - 1
@@ -484,17 +558,20 @@ UI_PARENT_SCOPED :: #force_inline proc(parent: ^UI_Box) {
 UI_PARENT_STACK_MAX :: 256
 @(private = "file")
 UI_State :: struct {
-	arena:             virtual.Arena,
-	frame_arena:       virtual.Arena,
-	parent_stack:      [dynamic; UI_PARENT_STACK_MAX]^UI_Box,
+	arena:        virtual.Arena,
+	frame_arena:  virtual.Arena,
+	parent_stack: [dynamic; UI_PARENT_STACK_MAX]^UI_Box,
 	// key_occur:         map[u64]int,
-	solved_last_frame: map[u64]UI_Box_Solved,
+	// solved_last_frame: map[u64]UI_Box_Solved,	// TODO
+	hot_key:      u64,
+	down_key:     u64,
+	clicked_key:  u64,
 	// TODO: Theme
-	font:              Font,
-	font_size:         f32,
+	font:         Font,
+	font_size:    f32,
 	//
-	window:            ^wm.Window,
-	mouse_pos:         [2]f32,
+	window:       ^wm.Window,
+	mouse_pos:    [2]f32,
 }
 @(private = "file")
 _ui_state: UI_State
@@ -508,7 +585,7 @@ ui_build_root :: proc() -> ^UI_Box {
 			text = "",
 			key = ui_key_from_text("###root"),
 			solved = {pos = 0, size = wm.get_client_size_2f32(_ui_state.window) or_else {}},
-			data = {bucket = {pref_size = UI_Size_HardCoded(0)}},
+			bucket = {pref_size = UI_Size_HardCoded(0)},
 		},
 	)
 	return res
