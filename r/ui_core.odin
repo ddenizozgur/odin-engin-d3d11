@@ -109,21 +109,15 @@ ui_begin_frame :: proc() {
 
 	virtual.arena_free_all(&_ui_state.frame_arena)
 	clear(&_ui_state.parent_stack)
+	clear(&_ui_state.overlays)
 	// clear(&_ui_state.key_occur)
 
-	root := ui_build_root()
-	ui_push_parent(root)
+	ui_push_parent(ui_build_root())
 }
 ui_end_frame :: proc() {
-	root := _ui_state.parent_stack[0]
-	ui_solve_layout(root)
-	{
-		_ui_state.hot_key = root.key
-		_ui_state.down_key = root.key
-		_ui_state.clicked_key = root.key
-		ui_action_pass(root)
-	}
-	ui_draw_tree(root)
+	ui_solve_tree()
+	ui_action_tree()
+	ui_draw_tree()
 
 	// clear(&_ui_state.solved_last_frame)
 	// ui_store_solved_tree(root)
@@ -153,7 +147,11 @@ ui_build_bucket :: proc(
 			bucket = {flags = bucket_flags, pref_size = pref_size, layout_axis = layout_axis},
 		},
 	)
+
 	ui_link_child(parent, box)
+	if .Overlay in bucket_flags {
+		append(&_ui_state.overlays, box)
+	}
 
 	return UI_Action {
 		box = box,
@@ -311,65 +309,55 @@ ui_draw_box :: proc(box: ^UI_Box) {
 		)
 	}
 }
-/*
-ui_draw_tree :: proc(box: ^UI_Box) {
-	ui_draw_box(box)
-	if box.kind == .Bucket {
-		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
-		for child in list.iterate_next(&it) {
-			ui_draw_tree(child)
-		}
-	}
-}
-*/
-ui_draw_tree :: proc(box: ^UI_Box) {
-	ui_draw_box(box)
 
-	if box.kind == .Bucket {
-		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
-		for child in list.iterate_next(&it) {
-			if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
-				ui_draw_tree(child)
-			}
-		}
+ui_draw_tree :: proc() {
+	inner :: proc(box: ^UI_Box) {
+		ui_draw_box(box)
 
-		it = list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
-		for child in list.iterate_next(&it) {
-			if child.kind == .Bucket && .Overlay in child.bucket.flags {
-				ui_draw_tree(child)
+		if box.kind == .Bucket {
+			it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+			for child in list.iterate_next(&it) {
+				if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
+					inner(child)
+				}
 			}
 		}
 	}
+
+	inner(_ui_state.parent_stack[0])
+	for ovr in _ui_state.overlays {inner(ovr)}
 }
 
 //
 // Action Pass
 //
-ui_action_pass :: proc(box: ^UI_Box) {
-	hovered := point_within_rect(_ui_state.mouse_pos, box.solved.pos, box.solved.size)
-	if hovered {
-		_ui_state.hot_key = box.key
-		if .Clickable in box.flags {
-			if wm.mouse_is_down(_ui_state.window, .Left) {_ui_state.down_key = box.key}
-			if wm.mouse_is_released(_ui_state.window, .Left) {_ui_state.clicked_key = box.key}
-		}
-	}
-
-	if box.kind == .Bucket {
-		it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
-		for child in list.iterate_next(&it) {
-			if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
-				ui_action_pass(child)
+ui_action_tree :: proc() {
+	inner :: proc(box: ^UI_Box) {
+		if point_within_rect(_ui_state.mouse_pos, box.solved.pos, box.solved.size) {
+			_ui_state.hot_key = box.key
+			if .Clickable in box.flags {
+				if wm.mouse_is_down(_ui_state.window, .Left) {_ui_state.down_key = box.key}
+				if wm.mouse_is_released(_ui_state.window, .Left) {_ui_state.clicked_key = box.key}
 			}
 		}
 
-		it = list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
-		for child in list.iterate_next(&it) {
-			if child.kind == .Bucket && .Overlay in child.bucket.flags {
-				ui_action_pass(child)
+		if box.kind == .Bucket {
+			it := list.iterator_head(box.bucket.children_list, UI_Box, "sibling_link")
+			for child in list.iterate_next(&it) {
+				if !(child.kind == .Bucket && .Overlay in child.bucket.flags) {
+					inner(child)
+				}
 			}
 		}
 	}
+
+	root := _ui_state.parent_stack[0]
+	_ui_state.hot_key = root.key
+	_ui_state.down_key = root.key
+	_ui_state.clicked_key = root.key
+
+	inner(root)
+	for ovr in _ui_state.overlays {inner(ovr)}
 }
 
 //
@@ -378,15 +366,71 @@ ui_action_pass :: proc(box: ^UI_Box) {
 UI_GAP :: f32(4)
 UI_PAD :: [2]f32{6, 2}
 
+ui_solve_tree :: proc() {
+	inner :: proc(parent: ^UI_Box) {
+		padding := f32(0)
+		if .HasPadding in parent.bucket.flags {
+			padding = UI_GAP
+		}
+
+		cursor := parent.solved.pos + padding
+
+		it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
+		for child in list.iterate_next(&it) {
+			final_size := ui_get_pref_size(child)
+
+			if child.kind == .Bucket && .Overlay in child.bucket.flags {
+				if .FillParent in child.flags {
+					switch parent.bucket.layout_axis {
+					case .Horizontal:
+						final_size.y = parent.solved.size.y - padding * 2
+					case .Vertical:
+						final_size.x = parent.solved.size.x - padding * 2
+					}
+				}
+
+				child.solved.pos = cursor
+				child.solved.size = final_size
+
+				inner(child)
+				continue
+			}
+
+			if .FillParent in child.flags {
+				switch parent.bucket.layout_axis {
+				case .Horizontal:
+					final_size.y = parent.solved.size.y - padding * 2
+				case .Vertical:
+					final_size.x = parent.solved.size.x - padding * 2
+				}
+			}
+
+			child.solved.pos = cursor
+			child.solved.size = final_size
+
+			if child.kind == .Bucket {
+				inner(child)
+			}
+
+			switch parent.bucket.layout_axis {
+			case .Horizontal:
+				cursor.x += final_size.x + padding
+			case .Vertical:
+				cursor.y += final_size.y + padding
+			}
+		}
+	}
+
+	inner(_ui_state.parent_stack[0])
+}
+
 ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 	child_cnt := 0
 
 	it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
 	for child in list.iterate_next(&it) {
-		if child.kind == .Bucket {
-			if .Overlay in child.bucket.flags {
-				continue
-			}
+		if child.kind == .Bucket && .Overlay in child.bucket.flags {
+			continue
 		}
 
 		child_size := ui_get_pref_size(child)
@@ -406,67 +450,13 @@ ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 	if .HasPadding in parent.bucket.flags && child_cnt > 1 {
 		switch parent.bucket.layout_axis {
 		case .Horizontal:
-			res.x += UI_GAP * f32(child_cnt - 1)
+			res.x += f32(child_cnt - 1) * UI_GAP
 		case .Vertical:
-			res.y += UI_GAP * f32(child_cnt - 1)
+			res.y += f32(child_cnt - 1) * UI_GAP
 		}
 	}
 
 	return res
-}
-
-ui_solve_layout :: proc(parent: ^UI_Box) {
-	padding := f32(0)
-	if .HasPadding in parent.bucket.flags {
-		padding = UI_GAP
-	}
-
-	cursor := parent.solved.pos + padding
-
-	it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
-	for child in list.iterate_next(&it) {
-		final_size := ui_get_pref_size(child)
-
-		if child.kind == .Bucket && .Overlay in child.bucket.flags {
-			if .FillParent in child.flags {
-				switch parent.bucket.layout_axis {
-				case .Horizontal:
-					final_size.y = parent.solved.size.y - padding * 2
-				case .Vertical:
-					final_size.x = parent.solved.size.x - padding * 2
-				}
-			}
-
-			child.solved.pos = cursor
-			child.solved.size = final_size
-
-			ui_solve_layout(child)
-			continue
-		}
-
-		if .FillParent in child.flags {
-			switch parent.bucket.layout_axis {
-			case .Horizontal:
-				final_size.y = parent.solved.size.y - padding * 2
-			case .Vertical:
-				final_size.x = parent.solved.size.x - padding * 2
-			}
-		}
-
-		child.solved.pos = cursor
-		child.solved.size = final_size
-
-		if child.kind == .Bucket {
-			ui_solve_layout(child)
-		}
-
-		switch parent.bucket.layout_axis {
-		case .Horizontal:
-			cursor.x += final_size.x + padding
-		case .Vertical:
-			cursor.y += final_size.y + padding
-		}
-	}
 }
 
 ui_get_pref_size :: proc(box: ^UI_Box) -> [2]f32 {
@@ -556,10 +546,13 @@ UI_PARENT_SCOPED :: #force_inline proc(parent: ^UI_Box) {
 @(private = "file")
 UI_PARENT_STACK_MAX :: 256
 @(private = "file")
+UI_OVERLAY_MAX :: 2048
+@(private = "file")
 UI_State :: struct {
 	arena:        virtual.Arena,
 	frame_arena:  virtual.Arena,
 	parent_stack: [dynamic; UI_PARENT_STACK_MAX]^UI_Box,
+	overlays:     [dynamic; UI_OVERLAY_MAX]^UI_Box,
 	// key_occur:         map[u64]int,
 	// solved_last_frame: map[u64]UI_Box_Solved,	// TODO
 	hot_key:      u64,
@@ -572,7 +565,7 @@ UI_State :: struct {
 	window:       ^wm.Window,
 	mouse_pos:    [2]f32,
 }
-@(private = "file")
+@(private)
 _ui_state: UI_State
 
 @(private = "file")
