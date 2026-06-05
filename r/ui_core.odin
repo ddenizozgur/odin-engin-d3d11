@@ -4,7 +4,6 @@ import "../wm"
 import "core:container/intrusive/list"
 import "core:fmt"
 import "core:hash"
-import "core:mem"
 import "core:mem/virtual"
 import "core:strings"
 
@@ -48,7 +47,7 @@ UI_Box_Kind :: enum {
 
 UI_Box :: struct {
 	kind:         UI_Box_Kind,
-	parent:       ^UI_Box,
+	parent_link:  ^UI_Box,
 	sibling_link: list.Node,
 	flags:        UI_Box_Flags,
 	text:         string, // TODO: move to widget ??
@@ -532,7 +531,7 @@ ui_key_from_text :: proc(text: string, seed := u64(0xcbf29ce484222325)) -> u64 {
 //
 @(private)
 ui_link_child :: proc(parent, child: ^UI_Box) {
-	child.parent = parent
+	child.parent_link = parent
 	list.push_back(&parent.bucket.children_list, &child.sibling_link)
 }
 ui_top_parent :: proc() -> ^UI_Box {
