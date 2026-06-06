@@ -84,10 +84,10 @@ ui_initialize :: proc(window: ^wm.Window, font: Font, font_size: f32) -> bool {
 		return false
 	}
 
-	if err := virtual.arena_init_growing(&_ui_state.arena); err != .None {
-		fmt.eprintfln("[ERROR] Failed to initialize UI arena: %v", err)
-		return false
-	}
+	// if err := virtual.arena_init_growing(&_ui_state.arena); err != .None {
+	// 	fmt.eprintfln("[ERROR] Failed to initialize UI arena: %v", err)
+	// 	return false
+	// }
 
 	{
 		// _ui_state.key_occur = make(map[u64]int, allocator = allocator)
@@ -142,7 +142,7 @@ ui_build_bucket :: proc(
 		UI_Box {
 			kind = .Bucket,
 			flags = box_flags,
-			text = ui_display_part_from_text(text),
+			text = ui_display_from_text(text),
 			key = key,
 			bucket = {flags = bucket_flags, pref_size = pref_size, layout_axis = layout_axis},
 		},
@@ -186,7 +186,7 @@ ui_build_widget :: proc(
 		UI_Box {
 			kind = .Widget,
 			flags = flags,
-			text = ui_display_part_from_text(text),
+			text = ui_display_from_text(text),
 			key = key,
 			widget = {pref_size = pref_size},
 		},
@@ -377,7 +377,7 @@ ui_solve_tree :: proc() {
 
 		it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
 		for child in list.iterate_next(&it) {
-			final_size := ui_get_pref_size(child)
+			final_size := ui_pref_size(child)
 
 			if child.kind == .Bucket && .Overlay in child.bucket.flags {
 				if .FillParent in child.flags {
@@ -424,7 +424,7 @@ ui_solve_tree :: proc() {
 	inner(_ui_state.parent_stack[0])
 }
 
-ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
+ui_children_pref_size :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 	child_cnt := 0
 
 	it := list.iterator_head(parent.bucket.children_list, UI_Box, "sibling_link")
@@ -433,7 +433,7 @@ ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 			continue
 		}
 
-		child_size := ui_get_pref_size(child)
+		child_size := ui_pref_size(child)
 
 		switch parent.bucket.layout_axis {
 		case .Horizontal:
@@ -459,7 +459,7 @@ ui_solve_children_layout :: proc(parent: ^UI_Box) -> (res: [2]f32) {
 	return res
 }
 
-ui_get_pref_size :: proc(box: ^UI_Box) -> [2]f32 {
+ui_pref_size :: proc(box: ^UI_Box) -> [2]f32 {
 	ui_pad := UI_PAD
 	size: [2]f32
 
@@ -470,7 +470,7 @@ ui_get_pref_size :: proc(box: ^UI_Box) -> [2]f32 {
 			case UI_Size_HardCoded:
 				size[axis] = f32(s)
 			case UI_Size_ChildrenSum:
-				size[axis] = ui_solve_children_layout(box)[axis]
+				size[axis] = ui_children_pref_size(box)[axis]
 				if .HasPadding in box.bucket.flags {
 					size[axis] += UI_GAP * 2
 				}
@@ -503,7 +503,7 @@ ui_store_solved_tree :: proc(box: ^UI_Box) {
 //
 // UI_Key
 //
-ui_display_part_from_text :: proc(text: string) -> string {
+ui_display_from_text :: proc(text: string) -> string {
 	if idx := strings.index(text, "###"); idx >= 0 {
 		return text[:idx]
 	}
@@ -549,7 +549,7 @@ UI_PARENT_STACK_MAX :: 256
 UI_OVERLAY_MAX :: 2048
 @(private = "file")
 UI_State :: struct {
-	arena:        virtual.Arena,
+	// arena:        virtual.Arena,
 	frame_arena:  virtual.Arena,
 	parent_stack: [dynamic; UI_PARENT_STACK_MAX]^UI_Box,
 	overlays:     [dynamic; UI_OVERLAY_MAX]^UI_Box,
