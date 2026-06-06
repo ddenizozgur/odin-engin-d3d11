@@ -351,13 +351,15 @@ ui_action_tree :: proc() {
 		}
 	}
 
-	root := _ui_state.parent_stack[0]
-	_ui_state.hot_key = root.key
-	_ui_state.down_key = root.key
-	_ui_state.clicked_key = root.key
+	{
+		root := _ui_state.parent_stack[0]
+		_ui_state.hot_key = root.key
+		_ui_state.down_key = root.key
+		_ui_state.clicked_key = root.key
 
-	inner(root)
-	for ovr in _ui_state.overlays {inner(ovr)}
+		inner(root)
+		for ovr in _ui_state.overlays {inner(ovr)}
+	}
 }
 
 //
@@ -546,13 +548,13 @@ UI_PARENT_SCOPED :: #force_inline proc(parent: ^UI_Box) {
 @(private = "file")
 UI_PARENT_STACK_MAX :: 256
 @(private = "file")
-UI_OVERLAY_MAX :: 2048
+UI_OVERLAYS_MAX :: 2048
 @(private = "file")
 UI_State :: struct {
 	// arena:        virtual.Arena,
 	frame_arena:  virtual.Arena,
 	parent_stack: [dynamic; UI_PARENT_STACK_MAX]^UI_Box,
-	overlays:     [dynamic; UI_OVERLAY_MAX]^UI_Box,
+	overlays:     [dynamic; UI_OVERLAYS_MAX]^UI_Box,
 	// key_occur:         map[u64]int,
 	// solved_last_frame: map[u64]UI_Box_Solved,	// TODO
 	hot_key:      u64,
@@ -570,13 +572,14 @@ _ui_state: UI_State
 
 @(private = "file")
 ui_build_root :: proc() -> ^UI_Box {
+	size, _ := wm.get_client_size_2f32(_ui_state.window)
 	res, err := virtual.new_clone(
 		&_ui_state.frame_arena,
 		UI_Box {
 			kind = .Bucket,
 			text = "",
 			key = ui_key_from_text("###root"),
-			solved = {pos = 0, size = wm.get_client_size_2f32(_ui_state.window) or_else {}},
+			solved = {pos = 0, size = size},
 			bucket = {pref_size = UI_Size_HardCoded(0)},
 		},
 	)

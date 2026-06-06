@@ -80,8 +80,8 @@ main :: proc() {
 		prev_time = this_time
 
 		for evnt in wm.poll_events_this_frame() {
-			#partial switch data in evnt {
-			case wm.Event_WindowClose:
+			#partial switch evnt.kind {
+			case .WindowClose:
 				break frame_loop
 			}
 		}
@@ -98,10 +98,10 @@ main :: proc() {
 	}
 }
 
-@(export) //link_name="NvOptimusEnablement"
-NvOptimusEnablement: u32 = 1
-@(export) //link_name="AmdPowerXpressRequestHighPerformance"
-AmdPowerXpressRequestHighPerformance: i32 = 1
+@(export, link_name = "NvOptimusEnablement")
+NvOptimusEnablement := u32(1)
+@(export, link_name = "AmdPowerXpressRequestHighPerformance")
+AmdPowerXpressRequestHighPerformance := i32(1)
 
 draw_fps :: proc(
 	font: r.Font,

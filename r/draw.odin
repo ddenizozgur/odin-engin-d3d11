@@ -66,7 +66,6 @@ draw_initialize :: proc() -> bool {
 		) or_return
 
 		d3d11_pshader_init(_draw_shader, "draw_shader.hlsl", &_draw_state.pshader) or_return
-
 		d3d11_uniforms_init(_Draw_Uniforms, &_draw_state.uniforms_buffer_gpu) or_return
 	}
 
@@ -398,6 +397,7 @@ _draw_upload_uniforms :: proc(size: [2]f32) {
 		{},
 		&sub_rsrc,
 	)
+
 	if windows.SUCCEEDED(hr) {
 		mem.copy(sub_rsrc.pData, &_draw_uniforms, size_of(_draw_uniforms))
 		_d3d11_state.device_ctx->Unmap(_draw_state.uniforms_buffer_gpu, 0)

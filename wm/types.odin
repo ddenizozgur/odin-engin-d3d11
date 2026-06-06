@@ -36,6 +36,42 @@ Window :: struct {
 	},
 }
 
+Event_Kind :: enum {
+	Key,
+	Text,
+	MouseBtn,
+	MouseMove,
+	MouseScroll,
+	WindowFocus,
+	WindowUnFocus,
+	WindowMinimize,
+	WindowMaximize,
+	WindowRestore,
+	WindowClose,
+}
+
+Event :: struct {
+	kind:    Event_Kind,
+	window:  ^Window,
+	using _: struct #raw_union {
+		key:          struct {
+			vkcode:    Key_VkCode,
+			mods:      Key_Mods,
+			down_up:   bool,
+			is_repeat: bool,
+			// repeat_count: int,
+		},
+		text:         rune,
+		mouse_btn:    struct {
+			btn:     Mouse_Btn,
+			down_up: bool,
+		},
+		mouse_move:   [2]i32,
+		mouse_scroll: [2]f32,
+	},
+}
+
+/*
 Event_Key :: struct {
 	window:    ^Window,
 	vkcode:    Key_VkCode,
@@ -98,6 +134,7 @@ Event :: union {
 	Event_WindowRestore,
 	Event_WindowClose,
 }
+*/
 
 //
 // Keys-Buttons
