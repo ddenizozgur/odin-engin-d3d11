@@ -27,6 +27,19 @@ ui_to_test :: proc() {
 				ui_menu_button("Mekanize")
 			}
 		}
+
+		{
+			UI_PARENT_SCOPED(ui_panel("###hidden", flags = {}).box)
+
+			if ui_menu_button("HarlyBarluy").hovered {
+				UI_PARENT_SCOPED(ui_panel("###tmp", bucket_flags = {.Overlay}).box)
+
+				ui_menu_button("Falan")
+				ui_menu_button("Felan")
+			}
+		}
+
+		ui_button("Pain")
 	}
 }
 
