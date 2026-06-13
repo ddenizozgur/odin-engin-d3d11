@@ -7,12 +7,9 @@ import "core:sys/windows"
 import "core:unicode"
 import "core:unicode/utf16"
 
-get_client_size :: proc(window: ^Window) -> ([2]i32, bool) {
-	return window.size_this_frame, window.is_resized
-}
-get_client_size_2f32 :: proc(window: ^Window) -> ([2]f32, bool) {
-	return cast([2]f32)window.size_this_frame, window.is_resized
-}
+is_resized :: proc(window: ^Window) -> bool {return window.is_resized}
+get_client_size :: proc(window: ^Window) -> [2]i32 {return window.size_this_frame}
+get_client_size_2f32 :: proc(window: ^Window) -> [2]f32 {return cast([2]f32)window.size_this_frame}
 
 mouse_is_down :: proc(window: ^Window, btn: Mouse_Btn) -> bool {
 	return window.btns_this_frame[btn]
@@ -269,7 +266,6 @@ _update_keys :: proc(window: ^Window, wparam: windows.WPARAM, lparam: windows.LP
 	vkcode := _vkcode_from_vk(cast(u32)wparam)
 	keymods := _get_keymods()
 
-	// do we want this???
 	#partial switch vkcode {
 	case .Ctrl:
 		keymods -= {.Ctrl}
